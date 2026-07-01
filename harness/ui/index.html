@@ -224,8 +224,10 @@
         <span id="rarDecision"></span>
       </div>
       <pre id="rarOut" class="muted">—</pre>
-      <p class="hint">The live token call below demonstrates <b>authentication</b> and does not yet enforce RAR (that's the
-        PingFederate attribute-contract phase); the entitlement decision above is the enforcement layer, verified in the core.</p>
+      <p class="hint">The <b>Send</b> button is gated by the entitlement decision above — the same containment rule the
+        <code>ClientAttestationVerifier</code> runs. A denied request (e.g. AMER, or <code>delete_account</code>) disables it.
+        Live PingFederate does not yet enforce RAR server-side (the attribute-contract phase), so a <i>granted</i> request
+        authenticates exactly as before.</p>
       <div class="row">
         <input id="clientId" value="https://rp.example.com" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font:12px var(--mono);min-width:240px">
         <button id="tokenBtn" disabled>Send token request</button>
@@ -428,6 +430,14 @@ function renderRar(){
   if(d){ d.innerHTML = dec.ok
     ? '<span class="pill ok">✔ granted</span>'
     : `<span class="pill err">✘ ${dec.error}</span> <span class="muted">${dec.reason}</span>`; }
+  // Gate the token request on the entitlement decision — but only once artifacts exist,
+  // so the button stays disabled until Step 3 has built the attestation + proof.
+  const btn = $('#tokenBtn');
+  if(btn && artifacts){
+    btn.disabled = !dec.ok;
+    btn.title = dec.ok ? '' : `blocked by entitlement: ${dec.reason}`;
+  }
+  return dec;
 }
 
 function renderCurl(){
