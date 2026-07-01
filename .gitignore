@@ -1,0 +1,44 @@
+# ── Build artifacts ──
+target/
+harness/out/
+**/*.class
+**/__pycache__/
+.DS_Store
+
+# ── Secrets / licenses (never commit) ──
+*.lic
+*.p12
+*.jks
+*.key
+*.pem
+
+# ── Decompiled PingFederate source (proprietary Ping Identity IP) ──
+# These carry a "Decompiled with CFR" header and are NOT ours to publish.
+# The authored attestation extension depends on them, so a local build needs
+# them present — but they must stay out of this public repo.
+com/pingidentity/ps/oidf/common/Claims.java
+com/pingidentity/ps/oidf/common/ClientStore.java
+com/pingidentity/ps/oidf/common/HttpGetClient.java
+com/pingidentity/ps/oidf/common/HttpTrustControllerGateway.java
+com/pingidentity/ps/oidf/common/JdkHttpGetClient.java
+com/pingidentity/ps/oidf/common/JwtCodec.java
+com/pingidentity/ps/oidf/common/PfJwksSigningKeyProvider.java
+com/pingidentity/ps/oidf/common/PfMgmtClientStore.java
+com/pingidentity/ps/oidf/common/SigningKeyProvider.java
+com/pingidentity/ps/oidf/common/SubordinateStatementCache.java
+com/pingidentity/ps/oidf/common/TrustChainValidationResult.java
+com/pingidentity/ps/oidf/common/TrustChainValidator.java
+com/pingidentity/ps/oidf/common/TrustControllerGateway.java
+com/pingidentity/ps/oidf/servlet/clientregistration/ExplicitRegistrationRequest.java
+com/pingidentity/ps/oidf/servlet/clientregistration/OpenIdRegistrationServlet.java
+com/pingidentity/ps/oidf/servlet/clientregistration/RegisteredClient.java
+com/pingidentity/ps/oidf/servlet/clientregistration/RegistrationConfiguration.java
+com/pingidentity/ps/oidf/servlet/clientregistration/RegistrationService.java
+com/pingidentity/ps/oidf/servlet/clientregistration/utils/OIDFederationUtils.java
+com/pingidentity/ps/oidf/servlet/trustanchor/FederationConfiguration.java
+com/pingidentity/ps/oidf/servlet/trustanchor/FederationService.java
+com/pingidentity/ps/oidf/servlet/trustanchor/OpenIdFederationServlet.java
+
+# ── Local Claude Code settings ──
+.claude/settings.local.json
+summary.txt

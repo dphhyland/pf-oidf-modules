@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PingFederate · Attestation-Based Client Auth demo</title>
+<style>
+  :root{--bg:#0f1419;--panel:#1a2129;--panel2:#222c36;--ink:#e6edf3;--mut:#8b98a5;
+        --acc:#4ea1ff;--ok:#3fb950;--warn:#d29922;--err:#f85149;--line:#2d3742;--mono:'SF Mono',ui-monospace,Menlo,Consolas,monospace}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 -apple-system,Segoe UI,Roboto,sans-serif}
+  header{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:600}
+  header .tag{font:12px var(--mono);color:var(--mut);background:var(--panel);padding:3px 8px;border-radius:6px;border:1px solid var(--line)}
+  main{max-width:1100px;margin:0 auto;padding:22px}
+  .step{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:14px 0;overflow:hidden}
+  .step>.hd{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .step>.hd .n{width:26px;height:26px;border-radius:50%;background:var(--panel2);color:var(--acc);
+        display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid var(--line);flex:none}
+  .step>.hd h2{font-size:15px;margin:0;font-weight:600;flex:1}
+  .step>.hd .s{font:12px var(--mono);color:var(--mut)}
+  .step>.bd{padding:16px 18px;display:none}
+  .step.open>.bd{display:block}
+  .step .desc{color:var(--mut);margin:0 0 12px}
+  button{background:var(--acc);color:#04101f;border:0;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer;font-size:13px}
+  button:hover{filter:brightness(1.08)} button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  label.opt{display:inline-flex;gap:6px;align-items:center;color:var(--mut);font-size:13px;cursor:pointer}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;
+      font:12px/1.5 var(--mono);margin:10px 0;max-height:280px;white-space:pre-wrap;word-break:break-all}
+  .jwt{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:720px){.jwt{grid-template-columns:1fr}}
+  .jwt .lab{font:11px var(--mono);text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
+  .h{color:var(--acc)} .p{color:var(--ok)} .pill{display:inline-block;padding:2px 8px;border-radius:20px;font:11px var(--mono);border:1px solid var(--line)}
+  .pill.ok{color:var(--ok);border-color:#23532f} .pill.err{color:var(--err);border-color:#5b2422} .pill.warn{color:var(--warn);border-color:#5b4a1f}
+  .kv{font:12px var(--mono);color:var(--mut)} .kv b{color:var(--ink);font-weight:600}
+  .muted{color:var(--mut)} .accent{color:var(--acc)} code{font-family:var(--mono);color:var(--warn)}
+  .flowmode{margin-left:auto}
+  .hint{font-size:12px;color:var(--mut);margin-top:8px}
+  a{color:var(--acc)}
+  /* ── component diagram ── */
+  .diagram{background:var(--panel);border:1px solid var(--line);border-radius:12px;margin:14px 0;padding:14px 16px}
+  .diagram svg{width:100%;height:auto;display:block}
+  .diagram .cap{color:var(--mut);font-size:13px;margin-top:6px;min-height:38px}
+  .diagram .cap b{color:var(--ink)} .diagram .cap code{color:var(--warn)}
+  svg text{font:11px var(--mono);fill:var(--mut);text-anchor:middle}
+  svg .zone{fill:var(--panel2);stroke:var(--line);opacity:.5}
+  svg .zlabel{font-size:10.5px;letter-spacing:.06em;fill:var(--mut)}
+  svg .t1{fill:#c9d4e0;font-weight:600}
+  svg .t2{font-size:9.5px}
+  svg .node{opacity:.5;transition:opacity .25s}
+  svg .node rect{fill:#0b0f14;stroke:var(--line);transition:stroke .2s}
+  svg .node.active{opacity:1}
+  svg .node.active rect{stroke:var(--acc);stroke-width:2}
+  svg .node.active .t1{fill:var(--ink)}
+  svg .edge{opacity:.16;transition:opacity .25s}
+  svg .edge.active{opacity:1}
+  svg .edge path{stroke:var(--acc);stroke-width:1.6;fill:none}
+  svg .edge .dash{stroke-dasharray:4 4}
+  svg .edge.active .flow{stroke-dasharray:7 6;animation:flow 1.1s linear infinite}
+  svg .edge .lbl{fill:var(--mut);font-size:9.5px}
+  svg .edge.active .lbl{fill:var(--acc)}
+  @keyframes flow{to{stroke-dashoffset:-13}}
+</style>
+</head>
+<body>
+<header>
+  <h1>PingFederate · Attestation-Based Client Authentication</h1>
+  <span class="tag" id="cfgTag">loading…</span>
+  <a class="tag" id="consoleLink" href="#" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">↗ Open PingFederate Console</a>
+  <span class="tag">draft-ietf-oauth-attestation-based-client-auth-09</span>
+  <span class="flowmode row">
+    <label class="opt"><input type="radio" name="mode" value="pop" checked> PoP mode</label>
+    <label class="opt"><input type="radio" name="mode" value="dpop"> DPoP combined</label>
+  </span>
+</header>
+<main>
+  <p class="muted">This drives the <b>live</b> PingFederate instance through a local proxy. Each step shows exactly what
+  the client does: mint keys, get a one-time challenge from the <code>ClientAttestationChallengeServlet</code>, build the
+  attestation &amp; proof JWTs, and call the token endpoint.</p>
+
+  <!-- component interaction diagram -->
+  <section class="diagram">
+    <svg viewBox="0 0 1000 408" role="img" aria-label="Component interaction diagram">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/>
+        </marker>
+      </defs>
+
+      <!-- zones -->
+      <rect class="zone" x="16" y="44" width="372" height="350" rx="12"/>
+      <rect class="zone" x="612" y="44" width="372" height="350" rx="12"/>
+      <text class="zlabel" x="202" y="34">YOUR BROWSER — THE CLIENT APP</text>
+      <text class="zlabel" x="798" y="34">PINGFEDERATE RUNTIME (RAILWAY)</text>
+
+      <!-- edges (drawn first, under nodes) -->
+      <g class="edge" data-on="2">
+        <path class="flow" d="M388,108 L632,108" marker-end="url(#ah)"/>
+        <text class="lbl" x="510" y="100">POST (no body)</text>
+      </g>
+      <g class="edge" data-on="2">
+        <path class="flow" d="M632,130 L390,130" marker-end="url(#ah)"/>
+        <text class="lbl" x="510" y="148">one-time challenge</text>
+      </g>
+      <g class="edge" data-on="4">
+        <path class="flow" d="M388,300 L632,182" marker-end="url(#ah)"/>
+        <text class="lbl" x="498" y="232">attestation + PoP / DPoP headers</text>
+      </g>
+      <g class="edge" data-on="4">
+        <path class="flow" d="M632,200 L390,332" marker-end="url(#ah)"/>
+        <text class="lbl" x="498" y="356">access_token / error</text>
+      </g>
+      <g class="edge" data-on="4">
+        <path d="M798,220 L798,232" marker-end="url(#ah)"/>
+      </g>
+      <g class="edge" data-on="4">
+        <path class="dash" d="M712,288 L712,300" marker-end="url(#ah)"/>
+        <text class="lbl" x="700" y="296" text-anchor="end">verify sig</text>
+      </g>
+
+      <!-- browser nodes -->
+      <g class="node" data-on="1,3">
+        <rect x="40" y="86" width="324" height="72" rx="8"/>
+        <text class="t1" x="202" y="116">Client Attester</text>
+        <text class="t2" x="202" y="134">mock key — public key pre-trusted by PF</text>
+      </g>
+      <g class="node" data-on="1,3">
+        <rect x="40" y="176" width="324" height="72" rx="8"/>
+        <text class="t1" x="202" y="206">Client instance key</text>
+        <text class="t2" x="202" y="224">EC P-256 · public JWK → cnf</text>
+      </g>
+      <g class="node" data-on="3,4">
+        <rect x="40" y="270" width="324" height="78" rx="8"/>
+        <text class="t1" x="202" y="302">Attestation JWT  +  PoP / DPoP proof</text>
+        <text class="t2" x="202" y="320">signed in your browser (WebCrypto)</text>
+      </g>
+
+      <!-- PingFederate nodes -->
+      <g class="node" data-on="2">
+        <rect x="636" y="86" width="324" height="60" rx="8"/>
+        <text class="t1" x="798" y="110">Challenge Servlet</text>
+        <text class="t2" x="798" y="128">oidf.war · /oidf/federation/attestation-challenge</text>
+      </g>
+      <g class="node" data-on="4">
+        <rect x="636" y="160" width="324" height="60" rx="8"/>
+        <text class="t1" x="798" y="184">Token Endpoint</text>
+        <text class="t2" x="798" y="202">/as/token.oauth2 · client_credentials</text>
+      </g>
+      <g class="node" data-on="4">
+        <rect x="636" y="234" width="324" height="54" rx="8"/>
+        <text class="t1" x="798" y="256">Issuance hook → ClientAttestationVerifier</text>
+        <text class="t2" x="798" y="273">OGNL validateClientAttestation(#this)</text>
+      </g>
+      <g class="node" data-on="4">
+        <rect x="636" y="300" width="324" height="48" rx="8"/>
+        <text class="t1" x="798" y="320">oidf-mock-attesters.json</text>
+        <text class="t2" x="798" y="336">pre-trusted attester public key</text>
+      </g>
+    </svg>
+    <div class="cap" id="diagCap"></div>
+  </section>
+
+  <!-- 1 -->
+  <section class="step open" id="s1">
+    <div class="hd"><span class="n">1</span><h2>Generate keys</h2><span class="s" id="s1s"></span></div>
+    <div class="bd">
+      <p class="desc">Two EC P-256 keys, created in your browser via WebCrypto: the <b>Client Attester</b> (vouches for the
+      app) and the <b>client instance</b> key (the key the app proves possession of; its public JWK goes in the attestation’s <code>cnf</code>).</p>
+      <div class="row"><button id="genBtn">Generate keys</button></div>
+      <div class="jwt"><div><p class="lab accent">attester public JWK</p><pre id="attJwk" class="muted">—</pre></div>
+      <div><p class="lab accent">client instance public JWK</p><pre id="cliJwk" class="muted">—</pre></div></div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="step" id="s2">
+    <div class="hd"><span class="n">2</span><h2>Fetch a challenge from the servlet</h2><span class="s" id="s2s"></span></div>
+    <div class="bd">
+      <p class="desc"><code>POST /oidf/federation/attestation-challenge</code> → a one-time, short-lived challenge. Note the
+      <code>Cache-Control: no-store</code> and that every call returns a fresh value.</p>
+      <div class="row"><button id="chBtn" disabled>Fetch challenge</button>
+        <span id="chPills"></span></div>
+      <pre id="chOut" class="muted">—</pre>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="step" id="s3">
+    <div class="hd"><span class="n">3</span><h2>Build the attestation &amp; proof JWTs</h2><span class="s" id="s3s"></span></div>
+    <div class="bd">
+      <p class="desc">The <b>Client Attestation JWT</b> (signed by the attester, binds the client key via <code>cnf</code>) plus a
+      <b>PoP JWT</b> or <b>DPoP proof</b> (signed by the client key, echoes the challenge). Headers/payloads decoded below.</p>
+      <div class="row"><button id="buildBtn" disabled>Build artifacts</button></div>
+      <div id="artifacts"></div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="step" id="s4">
+    <div class="hd"><span class="n">4</span><h2>Call the token endpoint</h2><span class="s" id="s4s"></span></div>
+    <div class="bd">
+      <p class="desc">Send the artifacts as <code>OAuth-Client-Attestation</code> + <code>OAuth-Client-Attestation-PoP</code>
+      (or <code>DPoP</code>) to the token endpoint. The OAuth AS, the client <code>https://rp.example.com</code>, and the
+      <code>validateClientAttestation</code> issuance criterion are <b>already configured</b> (open the console above to
+      view/edit them). The request reaches the hook, which runs the verifier and — for this demo's untrusted attester —
+      rejects with <code>attestation_validation_failed</code>. A successful token additionally needs the attester to be
+      <b>OpenID-Federation-trusted</b> (a trust anchor/controller), which the demo doesn't yet stand up.</p>
+      <div class="row">
+        <input id="clientId" value="https://rp.example.com" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font:12px var(--mono);min-width:240px">
+        <button id="tokenBtn" disabled>Send token request</button>
+      </div>
+      <p class="lab accent" style="margin-top:12px">equivalent curl</p>
+      <pre id="curlOut" class="muted">—</pre>
+      <p class="lab accent">PingFederate response</p>
+      <pre id="tokOut" class="muted">—</pre>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const enc = new TextEncoder();
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const b64uStr = s => b64u(enc.encode(s));
+const j = o => JSON.stringify(o);
+const pretty = o => JSON.stringify(o, null, 2);
+let CFG={}, attester=null, client=null, challenge=null, artifacts=null;
+
+// ── diagram stage highlighting ──
+const CAPS = {
+  1:"<b>Stage 1 — Generate keys.</b> The <b>attester</b> and <b>client-instance</b> keys are created in your browser. Nothing leaves the page yet.",
+  2:"<b>Stage 2 — Fetch a challenge.</b> The browser POSTs to the <b>Challenge Servlet</b> in <code>oidf.war</code>; PingFederate returns a one-time, short-lived challenge.",
+  3:"<b>Stage 3 — Build artifacts.</b> The attester signs the <b>Attestation JWT</b> (binding the client key via <code>cnf</code>); the client key signs the <b>PoP / DPoP proof</b>. Still all in-browser.",
+  4:"<b>Stage 4 — Call the token endpoint.</b> The artifacts go to <code>/as/token.oauth2</code>; the issuance hook runs the <b>verifier</b>, which checks the proof and validates the attestation signature against PF's pre-trusted attester key, then issues (or rejects) the token."
+};
+let CUR_STAGE = 1;
+function highlightStage(n){
+  CUR_STAGE = n;
+  document.querySelectorAll('.diagram [data-on]').forEach(el=>{
+    const on = el.getAttribute('data-on').split(',');
+    el.classList.toggle('active', on.includes(String(n)));
+  });
+  const cap = document.querySelector('#diagCap'); if(cap) cap.innerHTML = CAPS[n]||'';
+}
+
+// Fixed mock-attester key — its PUBLIC key is pre-trusted in PingFederate's
+// mock-attesters file, so attestations it signs are accepted (no federation needed).
+const ATTESTER_PRIV_JWK = {"kty":"EC","kid":"mock-attester-1","crv":"P-256",
+  "x":"c2pTtxD_E2ZGIMam9QGsiDvlY57axE9Q9LKSnidQUag",
+  "y":"ZI_wiUp0BUd_Gmi9412cAet7vBMhi4fkwclL_ujlTSI",
+  "d":"9TAjv9_QP_mzZOn0NIWeERR_gtXjcqqj8KDp-XX-C84"};
+const ATTESTER_PUB_JWK = {kty:"EC",kid:"mock-attester-1",crv:"P-256",x:ATTESTER_PRIV_JWK.x,y:ATTESTER_PRIV_JWK.y};
+async function importAttester(){
+  const k = await crypto.subtle.importKey('jwk', ATTESTER_PRIV_JWK, {name:'ECDSA',namedCurve:'P-256'}, false, ['sign']);
+  return {privateKey:k};
+}
+
+function mode(){ return document.querySelector('input[name=mode]:checked').value; }
+function openStep(id){ $(id).classList.add('open'); }
+function setStatus(id,txt,cls){ const e=$(id); e.textContent=txt||''; e.className='s '+(cls||''); }
+
+async function genKey(){
+  return crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'}, true, ['sign','verify']);
+}
+async function pubJwk(kp,kid){
+  const jwk = await crypto.subtle.exportKey('jwk', kp.publicKey);
+  const out = {kty:jwk.kty, crv:jwk.crv, x:jwk.x, y:jwk.y};
+  if(kid) out.kid=kid;
+  return out;
+}
+// ES256 signer — WebCrypto ECDSA P-256 returns raw R||S, which is already JOSE format
+async function jws(kp, header, payload){
+  const si = b64uStr(j(header)) + '.' + b64uStr(j(payload));
+  const sig = await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'}, kp.privateKey, enc.encode(si));
+  return si + '.' + b64u(sig);
+}
+function decode(jwt){
+  const [h,p] = jwt.split('.');
+  const d = s => JSON.parse(atob(s.replace(/-/g,'+').replace(/_/g,'/')));
+  return {header:d(h), payload:d(p)};
+}
+
+$('#genBtn').onclick = async () => {
+  attester = await importAttester();      // fixed, pre-trusted mock attester
+  client = await genKey();                // fresh per session; cnf binds it
+  $('#attJwk').textContent = pretty(ATTESTER_PUB_JWK) + '\n// fixed — public key pre-trusted by PF';
+  $('#cliJwk').textContent = pretty(await pubJwk(client,'instance-1'));
+  $('#attJwk').className=''; $('#cliJwk').className='';
+  setStatus('#s1s','keys ready','');
+  highlightStage(1);
+  $('#chBtn').disabled=false; openStep('#s2');
+};
+
+$('#chBtn').onclick = async () => {
+  setStatus('#s2s','fetching…');
+  const r = await fetch('/api/challenge',{method:'POST'}).then(r=>r.json());
+  let body; try{ body = JSON.parse(r.body);}catch{ body={}; }
+  challenge = body.attestation_challenge;
+  const pills = [];
+  pills.push(`<span class="pill ${r.status===200?'ok':'err'}">HTTP ${r.status}</span>`);
+  pills.push(`<span class="pill ${/no-store/i.test(r.cache_control)?'ok':'warn'}">Cache-Control: ${r.cache_control||'—'}</span>`);
+  $('#chPills').innerHTML = pills.join(' ');
+  $('#chOut').textContent = pretty(body); $('#chOut').className='';
+  setStatus('#s2s', challenge?'challenge received':'no challenge', challenge?'':'');
+  highlightStage(2);
+  if(challenge){ $('#buildBtn').disabled=false; openStep('#s3'); }
+};
+
+async function buildArtifacts(){
+  const now = Math.floor(Date.now()/1000);
+  const CLIENT_ID = $('#clientId').value || 'https://rp.example.com';
+  const cnfJwk = await pubJwk(client,'instance-1');
+  const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
+  const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600, cnf:{jwk:cnfJwk}};
+  const attestation = await jws(attester, attHeader, attPayload);
+
+  const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
+  let proofHeaderName, proof, proofHeader, proofPayload;
+  if(mode()==='pop'){
+    proofHeaderName='OAuth-Client-Attestation-PoP';
+    proofHeader={alg:'ES256', typ:'oauth-client-attestation-pop+jwt', kid:'instance-1'};
+    // challenge omitted: the challenge servlet and the runtime hook use separate
+    // stores, so an issued challenge isn't yet bound into the token request.
+    proofPayload={iss:CLIENT_ID, aud:CFG.token_endpoint, jti, iat:now};
+    proof = await jws(client, proofHeader, proofPayload);
+  } else {
+    proofHeaderName='DPoP';
+    proofHeader={alg:'ES256', typ:'dpop+jwt', jwk:cnfJwk};
+    proofPayload={htm:'POST', htu:CFG.token_endpoint, jti, iat:now};
+    proof = await jws(client, proofHeader, proofPayload);
+  }
+  return {CLIENT_ID, attestation, attHeader, attPayload, proofHeaderName, proof, proofHeader, proofPayload};
+}
+
+function artBlock(title, jwt, dec){
+  return `<div style="margin:14px 0">
+    <p class="lab accent">${title}</p>
+    <div class="jwt">
+      <div><p class="lab h">header</p><pre>${pretty(dec.header)}</pre></div>
+      <div><p class="lab p">payload</p><pre>${pretty(dec.payload)}</pre></div>
+    </div>
+    <p class="lab muted">compact JWT</p><pre class="muted">${jwt}</pre></div>`;
+}
+
+$('#buildBtn').onclick = async () => {
+  artifacts = await buildArtifacts();
+  const a = artifacts;
+  $('#artifacts').innerHTML =
+    artBlock('Client Attestation JWT — header OAuth-Client-Attestation', a.attestation, {header:a.attHeader,payload:a.attPayload})
+    + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
+  setStatus('#s3s', mode()==='pop'?'attestation + PoP built':'attestation + DPoP built');
+  highlightStage(3);
+  $('#tokenBtn').disabled=false; openStep('#s4'); renderCurl();
+};
+
+function renderCurl(){
+  const a = artifacts; if(!a) return;
+  const lines = [`curl -k -X POST '${CFG.token_endpoint}' \\`,
+    `  -H 'OAuth-Client-Attestation: ${a.attestation}' \\`,
+    `  -H '${a.proofHeaderName}: ${a.proof}' \\`,
+    `  -d 'grant_type=client_credentials' \\`,
+    `  -d 'client_id=${a.CLIENT_ID}'`];
+  $('#curlOut').textContent = lines.join('\n'); $('#curlOut').className='';
+}
+
+$('#tokenBtn').onclick = async () => {
+  const a = artifacts; if(!a) return;
+  highlightStage(4);
+  setStatus('#s4s','calling token endpoint…');
+  const headers = {'OAuth-Client-Attestation': a.attestation};
+  headers[a.proofHeaderName] = a.proof;
+  const form = {grant_type:'client_credentials', client_id:a.CLIENT_ID};
+  const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:j({headers, form})}).then(r=>r.json());
+  let body; try{ body=JSON.parse(r.body);}catch{ body=r.body; }
+  const ok = r.status>=200 && r.status<300;
+  $('#tokOut').innerHTML = `<span class="pill ${ok?'ok':'err'}">HTTP ${r.status}</span>\n`
+    + (typeof body==='string'? body : pretty(body));
+  $('#tokOut').className='';
+  setStatus('#s4s', ok?'token issued ✓':'token endpoint responded', ok?'':'');
+};
+
+document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
+
+// click a step header to re-highlight its stage in the diagram
+document.querySelectorAll('main .step .hd').forEach((hd,i)=>{
+  hd.style.cursor='pointer';
+  hd.onclick=()=>{ openStep('#s'+(i+1)); highlightStage(i+1); };
+});
+highlightStage(1);
+
+fetch('/config').then(r=>r.json()).then(c=>{
+  CFG=c; $('#cfgTag').textContent=c.pf_base;
+  if(c.console_url){ $('#consoleLink').href=c.console_url; }
+  if(c.client_id){ $('#clientId').value=c.client_id; }
+});
+</script>
+</body>
+</html>

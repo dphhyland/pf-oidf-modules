@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xmlns="http://maven.apache.org/POM/4.0.0"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.pingidentity.ps.oidf</groupId>
+    <artifactId>pf-oidf-modules</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>pf-oidf-modules</name>
+    <description>pf-cdr-au-data-in-modules</description>
+    <url>http://www.pingidentity.com/</url>
+
+    <organization>
+        <name>PingIdentity</name>
+        <url>https://www.pingidentity.com</url>
+    </organization>
+
+    <properties>
+        <!-- Project Properties -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.release>17</maven.compiler.release>
+        <maven.build.timestamp.format>yyyyMMddHHmmss'Z'</maven.build.timestamp.format>
+
+        <!-- Compile Dependencies -->
+        <version.server-sdk>13.0.0.3</version.server-sdk>
+        <version.javax.servlet-api>4.0.0</version.javax.servlet-api>
+        <version.lombok>1.18.28</version.lombok>
+        <version.httpclient>4.5.14</version.httpclient>
+        <version.spring.beans>5.3.5</version.spring.beans>
+
+        <!-- Test Dependencies -->
+        <version.junit.jupiter>5.10.2</version.junit.jupiter>
+        <version.mockito>5.12.0</version.mockito>
+
+        <!-- Plugin Dependencies -->
+        <version.maven-clean-plugin>3.3.2</version.maven-clean-plugin>
+        <version.maven-deploy-plugin>3.1.1</version.maven-deploy-plugin>
+        <version.maven-install-plugin>3.1.1</version.maven-install-plugin>
+        <version.maven-resources-plugin>3.3.1</version.maven-resources-plugin>
+        <version.maven-site-plugin>3.12.1</version.maven-site-plugin>
+        <version.maven-surefire-plugin>3.2.5</version.maven-surefire-plugin>
+
+        <version.maven-compiler-plugin>3.13.0</version.maven-compiler-plugin>
+        <version.maven-enforcer-plugin>3.4.1</version.maven-enforcer-plugin>
+        <version.maven-jar-plugin>3.3.0</version.maven-jar-plugin>
+        <version.maven-shade-plugin>3.5.0</version.maven-shade-plugin>
+        <version.maven-assembly-plugin>3.7.1</version.maven-assembly-plugin>
+        <version.jacoco-maven-plugin>0.8.10</version.jacoco-maven-plugin>
+        <version.maven-pmd-plugin>3.21.2</version.maven-pmd-plugin>
+        <version.maven-checkstyle-plugin>3.3.1</version.maven-checkstyle-plugin>
+    </properties>
+
+    <distributionManagement>
+        <repository>
+            <id>pro-serv-mvn</id>
+            <name>pro-serv-mvn-releases</name>
+            <url>https://art01.corp.pingidentity.com/ui/native/repo/pingfederate/</url>
+        </repository>
+        <snapshotRepository>
+            <id>pro-serv-mvn</id>
+            <name>pro-serv-mvn-snapshots</name>
+            <url>https://art01.corp.pingidentity.com/ui/native/repo/pingfederate/</url>
+        </snapshotRepository>
+    </distributionManagement>
+	
+    <dependencies>
+        <dependency>
+            <groupId>pingfederate</groupId>
+            <artifactId>pf-protocolengine</artifactId>
+            <version>${version.server-sdk}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.pingidentity.pingfederate</groupId>
+            <artifactId>pingfederate-sdk</artifactId>
+            <version>${version.server-sdk}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>${version.javax.servlet-api}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>${version.httpclient}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-beans</artifactId>
+            <version>${version.spring.beans}</version>
+            <scope>provided</scope>
+        </dependency>
+        
+        <dependency>
+		  <groupId>org.bitbucket.b_c</groupId>
+		  <artifactId>jose4j</artifactId>
+		  <version>0.9.6</version>
+		</dependency>
+
+        <!-- Test scope -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${version.junit.jupiter}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${version.mockito}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>${version.mockito}</version>
+            <scope>test</scope>
+        </dependency>
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-core</artifactId>
+		  <version>2.13.2</version>
+		</dependency>
+		<dependency>
+		  <groupId>com.fasterxml.jackson.core</groupId>
+		  <artifactId>jackson-databind</artifactId>
+		  <version>2.19.2</version>
+		</dependency>
+    </dependencies>
+
+    <build>
+        <finalName>${project.name}-${project.version}
+        </finalName>
+
+        <defaultGoal>package</defaultGoal>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>${version.maven-clean-plugin}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>${version.maven-deploy-plugin}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <version>${version.maven-install-plugin}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>${version.maven-resources-plugin}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <version>${version.maven-site-plugin}</version>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${version.maven-surefire-plugin}</version>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>${version.maven-enforcer-plugin}</version>
+                <executions>
+                    <execution>
+                        <id>enforce-java</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>11.0</version>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>3.9.0</version>
+                                </requireMavenVersion>
+                                <!--                                <requireProperty>-->
+                                <!--                                    <property>project.groupId</property>-->
+                                <!--                                    <message>"You must set a valid groupId."</message>-->
+                                <!--                                    <regex>^com\.pingidentity\.ps\.pf.(adapter\.idp|adapter\.sp|pcv|provisioner|datastore|authenticationselector|accessgrant|notification\.publisher).*</regex>-->
+                                <!--                                    <regexMessage>"Project groupId must must start with com.pingidentity.ps.pf.[adapter.idp | adapter.sp | pcv | provisioner | datastore | authenticationselector | accessgrant | notification.publisher]</regexMessage>-->
+                                <!--                                </requireProperty>-->
+                                <requireProperty>
+                                    <property>project.artifactId</property>
+                                    <message>"You must set a valid artifactId."</message>
+                                    <regex>^pf-.*</regex>
+                                    <regexMessage>"Project artifactId must must start with pf-."</regexMessage>
+                                </requireProperty>
+                                <requireProperty>
+                                    <property>project.version</property>
+                                    <message>"Project version must be specified."</message>
+                                    <regex>.*(\d|-beta|-SNAPSHOT)$</regex>
+                                    <regexMessage>"Project version must end in a number, -beta or -SNAPSHOT."</regexMessage>
+                                </requireProperty>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>${version.maven-compiler-plugin}</version>
+                <configuration>
+                    <release>${maven.compiler.release}</release>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>${version.maven-jar-plugin}</version>
+                <configuration>
+                    <archive>
+                        <addMavenDescriptor>false</addMavenDescriptor>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+<!--
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>${version.maven-shade-plugin}</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <transformers>
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <manifestEntries>
+                                        <Specification-Title>${project.artifactId}</Specification-Title>
+                                        <Specification-Version>${project.version}</Specification-Version>
+                                        <Implementation-Title>${project.artifactId}</Implementation-Title>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
+                                        <Implementation-Vendor-Id>${project.groupId}</Implementation-Vendor-Id>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**/*</exclude>
+                                        <exclude>**/module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+-->
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>${version.maven-assembly-plugin}</version>
+                <executions>
+                    <execution>
+                        <id>create-zip-archive</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <descriptors>
+                                <descriptor>${basedir}/build-tools/assembly.xml</descriptor>
+                            </descriptors>
+                            <appendAssemblyId>true</appendAssemblyId>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>${version.maven-pmd-plugin}</version>
+                <executions>
+                    <execution>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <verbose>true</verbose>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <linkXRef>false</linkXRef>
+                    <targetJdk>${maven.compiler.release}</targetJdk>
+                    <failOnViolation>true</failOnViolation>
+                    <printFailingErrors>true</printFailingErrors>
+                    <skipEmptyReport>false</skipEmptyReport>
+                    <analysisCache>true</analysisCache>
+                    <analysisCacheLocation>${project.build.directory}/pmd/pmd.cache</analysisCacheLocation>
+                    <rulesets>
+                        <ruleset>${basedir}/build-tools/pmd/ps-eng-ruleset.xml</ruleset>
+                    </rulesets>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>${version.maven-checkstyle-plugin}</version>
+                <configuration>
+                    <consoleOutput>true</consoleOutput>
+                    <configLocation>${basedir}/build-tools/checkstyle/checkstyle.xml</configLocation>
+                    <headerLocation>${basedir}/build-tools/checkstyle/LICENSE.txt</headerLocation>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

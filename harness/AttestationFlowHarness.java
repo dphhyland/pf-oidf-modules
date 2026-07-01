@@ -1,0 +1,320 @@
+/*
+ * Test harness for the OAuth 2.0 Attestation-Based Client Authentication module
+ * (draft-ietf-oauth-attestation-based-client-auth-09) deployed in PingFederate.
+ *
+ * Two modes:
+ *
+ *   live <baseUrl> [tokenEndpoint] [clientId]
+ *       Talks to a DEPLOYED instance. Fetches a real challenge from
+ *       <baseUrl>/federation/attestation-challenge, mints a complete Client
+ *       Attestation JWT + PoP JWT (and a DPoP combined-mode proof) that echo the
+ *       challenge, and prints the OAuth-Client-Attestation / -PoP (and DPoP)
+ *       headers plus a ready-to-run curl against the token endpoint.
+ *
+ *   selfverify
+ *       Runs the module's REAL ClientAttestationVerifier in-process (no network,
+ *       no PF) and asserts that a correctly-built request is accepted in both PoP
+ *       and DPoP modes, and that a tampered DPoP key is rejected. Proves the
+ *       deployed verification logic end-to-end.
+ *
+ * Classpath: jose4j (always) + the built pf-oidf-modules jar (for `selfverify`).
+ * See harness/run.sh.
+ */
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
+import java.util.List;
+import java.util.Map;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import org.jose4j.jwk.EcJwkGenerator;
+import org.jose4j.jwk.JsonWebKey;
+import org.jose4j.jwk.PublicJsonWebKey;
+import org.jose4j.json.JsonUtil;
+import org.jose4j.jws.JsonWebSignature;
+import org.jose4j.jwt.JwtClaims;
+import org.jose4j.jwt.NumericDate;
+import org.jose4j.keys.EllipticCurves;
+
+public final class AttestationFlowHarness {
+
+    static final String ATTESTATION_TYP = "oauth-client-attestation+jwt";
+    static final String POP_TYP = "oauth-client-attestation-pop+jwt";
+    static final String DPOP_TYP = "dpop+jwt";
+
+    public static void main(String[] args) throws Exception {
+        // PingFederate serves a self-signed cert (CN=localhost) behind the TCP proxy;
+        // accept it for this dev/test harness (chain + hostname).
+        System.setProperty("jdk.internal.httpclient.disableHostnameVerification", "true");
+        String mode = args.length > 0 ? args[0] : "selfverify";
+        switch (mode) {
+            case "live" -> live(args);
+            case "selfverify" -> selfVerify();
+            default -> {
+                System.err.println("usage: AttestationFlowHarness <live|selfverify> [baseUrl] [tokenEndpoint] [clientId]");
+                System.exit(2);
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- live mode
+
+    private static void live(String[] args) throws Exception {
+        if (args.length < 2) {
+            System.err.println("usage: AttestationFlowHarness live <baseUrl> [tokenEndpoint] [clientId]");
+            System.err.println("  e.g. AttestationFlowHarness live https://reseau.proxy.rlwy.net:17055/oidf");
+            System.exit(2);
+        }
+        String baseUrl = stripTrailingSlash(args[1]);
+        String clientId = args.length > 3 ? args[3] : "https://rp.example.com";
+        String tokenEndpoint = args.length > 2 ? args[2] : baseUrl + "/as/token.oauth2";
+        String challengeUrl = baseUrl + "/federation/attestation-challenge";
+
+        // Use a fixed attester key when OIDF_ATTESTER_JWK is set (must match the server's
+        // mock-attesters trust file); otherwise a random one (which a federation/mock-trusted
+        // server will reject).
+        PublicJsonWebKey attesterKey = attesterKey();
+        PublicJsonWebKey instanceKey = ec("instance-1");
+
+        System.out.println("== Attestation client-auth harness (live) ==");
+        System.out.println("challenge endpoint : " + challengeUrl);
+        System.out.println("token endpoint     : " + tokenEndpoint);
+        System.out.println("client_id          : " + clientId);
+        System.out.println();
+
+        // 1) fetch a real challenge from the deployed servlet
+        HttpClient http = trustAllClient();
+        HttpResponse<String> chResp = http.send(
+                HttpRequest.newBuilder(URI.create(challengeUrl)).POST(HttpRequest.BodyPublishers.noBody()).build(),
+                HttpResponse.BodyHandlers.ofString());
+        require(chResp.statusCode() == 200, "challenge endpoint returned HTTP " + chResp.statusCode());
+        require("no-store".equalsIgnoreCase(chResp.headers().firstValue("cache-control").orElse("")),
+                "challenge response missing Cache-Control: no-store");
+        Map<String, Object> chJson = JsonUtil.parseJson(chResp.body());
+        String challenge = (String) chJson.get("attestation_challenge");
+        require(challenge != null && !challenge.isBlank(), "no attestation_challenge in response");
+        System.out.println("[1] fetched challenge: " + challenge + "  (expires_in=" + chJson.get("expires_in") + ")");
+
+        // Optionally omit the challenge (OIDF_NO_CHALLENGE=1) — needed until the challenge
+        // servlet and the runtime hook share one challenge store.
+        String popChallenge = "1".equals(System.getenv("OIDF_NO_CHALLENGE")) ? null : challenge;
+        // 2) Client Attestation JWT (signed by the attester; cnf binds the instance key)
+        String attestation = attestationJwt(attesterKey, instanceKey, "https://attester.example.com", clientId);
+        // 3a) PoP JWT (signed by the instance key; echoes the challenge)
+        String pop = popJwt(instanceKey, clientId, tokenEndpoint, popChallenge);
+        // 3b) DPoP combined-mode proof (alternative to the PoP; nonce = challenge)
+        String dpop = dpopJwt(instanceKey, tokenEndpoint, popChallenge);
+
+        System.out.println("[2] built Client Attestation JWT (typ=" + ATTESTATION_TYP + ")");
+        System.out.println("[3] built PoP JWT (typ=" + POP_TYP + ") and DPoP proof (typ=" + DPOP_TYP + ")");
+        System.out.println();
+        System.out.println("---- PoP-mode request headers (attest_jwt_client_auth) ----");
+        System.out.println("OAuth-Client-Attestation: " + attestation);
+        System.out.println("OAuth-Client-Attestation-PoP: " + pop);
+        System.out.println();
+        System.out.println("---- ready-to-run curl (PoP mode) ----");
+        System.out.println(curl(tokenEndpoint, clientId, "OAuth-Client-Attestation-PoP", pop, attestation, null));
+        System.out.println();
+        System.out.println("---- DPoP combined-mode (attest_jwt_client_auth_dpop) ----");
+        System.out.println(curl(tokenEndpoint, clientId, "DPoP", dpop, attestation, null));
+        System.out.println();
+        System.out.println("NOTE: the token endpoint accepts these only once PingFederate is configured with an");
+        System.out.println("      OAuth AS, the client registered (public client + attestation_required=true), and an");
+        System.out.println("      issuance criterion calling ClientAttestationUtils.validateClientAttestation(#this).");
+    }
+
+    // ----------------------------------------------------------- selfverify mode
+
+    /**
+     * Runs the module's real verifier in-process. Uses reflection so this file
+     * compiles even when the module jar is absent (live mode only); selfverify
+     * requires the jar on the classpath.
+     */
+    private static void selfVerify() throws Exception {
+        final String ATTESTER = "https://attester.example.com";
+        final String CLIENT_ID = "https://rp.example.com";
+        final String OP_ISSUER = "https://op.example.com";
+        final String TOKEN_ENDPOINT = OP_ISSUER + "/as/token.oauth2";
+
+        PublicJsonWebKey attesterKey = ec("attester-1");
+        PublicJsonWebKey instanceKey = ec("instance-1");
+
+        Class<?> cfgBuilderHolder = Class.forName("com.pingidentity.ps.oidf.common.ClientAttestationConfig");
+        Object builder = cfgBuilderHolder.getMethod("builder").invoke(null);
+        Class<?> builderClass = builder.getClass();
+        builder = builderClass.getMethod("addAcceptedAudience", String.class).invoke(builder, OP_ISSUER);
+        builder = builderClass.getMethod("addAcceptedAudience", String.class).invoke(builder, TOKEN_ENDPOINT);
+        builder = builderClass.getMethod("expectedHtu", String.class).invoke(builder, TOKEN_ENDPOINT);
+        builder = builderClass.getMethod("challengeRequired", boolean.class).invoke(builder, true);
+        Object config = builderClass.getMethod("build").invoke(builder);
+
+        Class<?> resolverIface = Class.forName("com.pingidentity.ps.oidf.common.AttesterKeyResolver");
+        JsonWebKey attesterPublic = JsonWebKey.Factory.newJwk(publicParams(attesterKey));
+        Object resolver = java.lang.reflect.Proxy.newProxyInstance(
+                resolverIface.getClassLoader(), new Class<?>[]{resolverIface},
+                (proxy, method, mArgs) -> "resolve".equals(method.getName()) ? List.of(attesterPublic) : null);
+
+        Object challengeService = Class.forName("com.pingidentity.ps.oidf.common.AttestationChallengeService")
+                .getDeclaredConstructor().newInstance();
+        Object replayCache = Class.forName("com.pingidentity.ps.oidf.common.AttestationReplayCache")
+                .getDeclaredConstructor().newInstance();
+
+        Class<?> verifierClass = Class.forName("com.pingidentity.ps.oidf.common.ClientAttestationVerifier");
+        Object verifier = verifierClass.getConstructors()[0]
+                .newInstance(resolver, config, replayCache, challengeService);
+        java.lang.reflect.Method verify = verifierClass.getMethod("verify",
+                String.class, String.class, String.class, String.class, String.class, String.class);
+        java.lang.reflect.Method issue = challengeService.getClass().getMethod("issue");
+
+        int pass = 0, fail = 0;
+
+        // PoP mode, with a server-issued (in-process) challenge
+        String challenge = (String) issue.invoke(challengeService);
+        String att = attestationJwt(attesterKey, instanceKey, ATTESTER, CLIENT_ID);
+        String pop = popJwt(instanceKey, CLIENT_ID, OP_ISSUER, challenge);
+        try {
+            Object res = verify.invoke(verifier, att, pop, null, "POST", TOKEN_ENDPOINT, CLIENT_ID);
+            String cid = (String) res.getClass().getMethod("clientId").invoke(res);
+            require(CLIENT_ID.equals(cid), "PoP mode clientId mismatch: " + cid);
+            System.out.println("[PASS] PoP mode accepted (clientId=" + cid + ")"); pass++;
+        } catch (Exception e) { System.out.println("[FAIL] PoP mode: " + root(e)); fail++; }
+
+        // DPoP combined mode (no challenge required path: build a fresh verifier-less check via challenge=null)
+        String challenge2 = (String) issue.invoke(challengeService);
+        String dpop = dpopJwt(instanceKey, TOKEN_ENDPOINT, challenge2);
+        try {
+            Object res = verify.invoke(verifier, att, null, dpop, "POST", TOKEN_ENDPOINT, CLIENT_ID);
+            String modeName = res.getClass().getMethod("mode").invoke(res).toString();
+            require(modeName.contains("DPOP"), "expected DPOP mode, got " + modeName);
+            System.out.println("[PASS] DPoP combined mode accepted (mode=" + modeName + ")"); pass++;
+        } catch (Exception e) { System.out.println("[FAIL] DPoP mode: " + root(e)); fail++; }
+
+        // Negative: DPoP signed by a key that does NOT match the attestation cnf must be rejected
+        String challenge3 = (String) issue.invoke(challengeService);
+        PublicJsonWebKey otherKey = ec("other-1");
+        String badDpop = dpopJwt(otherKey, TOKEN_ENDPOINT, challenge3);
+        try {
+            verify.invoke(verifier, att, null, badDpop, "POST", TOKEN_ENDPOINT, CLIENT_ID);
+            System.out.println("[FAIL] tampered DPoP key was accepted (should be rejected)"); fail++;
+        } catch (Exception e) { System.out.println("[PASS] tampered DPoP key rejected (" + root(e) + ")"); pass++; }
+
+        System.out.println();
+        System.out.println("selfverify: " + pass + " passed, " + fail + " failed");
+        if (fail > 0) System.exit(1);
+    }
+
+    // ----------------------------------------------------------------- builders
+
+    static String attestationJwt(PublicJsonWebKey attesterKey, PublicJsonWebKey instanceKey,
+                                 String attesterIssuer, String clientId) throws Exception {
+        JwtClaims att = new JwtClaims();
+        att.setIssuer(attesterIssuer);
+        att.setSubject(clientId);
+        att.setIssuedAtToNow();
+        att.setExpirationTime(NumericDate.fromSeconds(NumericDate.now().getValue() + 600L));
+        att.setClaim("cnf", Map.of("jwk", publicParams(instanceKey)));
+        return sign(attesterKey, "ES256", ATTESTATION_TYP, att);
+    }
+
+    static String popJwt(PublicJsonWebKey instanceKey, String clientId, String audience, String challenge) throws Exception {
+        JwtClaims pop = new JwtClaims();
+        pop.setIssuer(clientId);
+        pop.setAudience(audience);
+        pop.setJwtId(randomId());
+        pop.setIssuedAtToNow();
+        if (challenge != null) pop.setClaim("challenge", challenge);
+        return sign(instanceKey, "ES256", POP_TYP, pop);
+    }
+
+    static String dpopJwt(PublicJsonWebKey signingKey, String htu, String nonce) throws Exception {
+        JwtClaims d = new JwtClaims();
+        d.setClaim("htm", "POST");
+        d.setClaim("htu", htu);
+        d.setJwtId(randomId());
+        d.setIssuedAtToNow();
+        if (nonce != null) d.setClaim("nonce", nonce);
+        JsonWebSignature jws = new JsonWebSignature();
+        jws.setPayload(d.toJson());
+        jws.setKey(signingKey.getPrivateKey());
+        jws.setAlgorithmHeaderValue("ES256");
+        jws.setHeader("typ", DPOP_TYP);
+        jws.setJwkHeader((PublicJsonWebKey) JsonWebKey.Factory.newJwk(publicParams(signingKey)));
+        return jws.getCompactSerialization();
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    static PublicJsonWebKey ec(String kid) throws Exception {
+        PublicJsonWebKey jwk = EcJwkGenerator.generateJwk(EllipticCurves.P256);
+        jwk.setKeyId(kid);
+        return jwk;
+    }
+
+    /** Fixed attester key from $OIDF_ATTESTER_JWK (private JWK JSON), else a fresh random one. */
+    static PublicJsonWebKey attesterKey() throws Exception {
+        String jwk = System.getenv("OIDF_ATTESTER_JWK");
+        if (jwk != null && !jwk.isBlank()) {
+            return org.jose4j.jwk.PublicJsonWebKey.Factory.newPublicJwk(jwk);
+        }
+        return ec("attester-1");
+    }
+
+    static Map<String, Object> publicParams(JsonWebKey jwk) {
+        return jwk.toParams(JsonWebKey.OutputControlLevel.PUBLIC_ONLY);
+    }
+
+    static String sign(PublicJsonWebKey key, String alg, String typ, JwtClaims claims) throws Exception {
+        JsonWebSignature jws = new JsonWebSignature();
+        jws.setPayload(claims.toJson());
+        jws.setKey(key.getPrivateKey());
+        jws.setAlgorithmHeaderValue(alg);
+        jws.setHeader("typ", typ);
+        if (key.getKeyId() != null) jws.setKeyIdHeaderValue(key.getKeyId());
+        return jws.getCompactSerialization();
+    }
+
+    static String curl(String tokenEndpoint, String clientId, String proofHeader, String proof,
+                       String attestation, String ignored) {
+        return "curl -k -X POST '" + tokenEndpoint + "' \\\n"
+                + "  -H 'OAuth-Client-Attestation: " + attestation + "' \\\n"
+                + "  -H '" + proofHeader + ": " + proof + "' \\\n"
+                + "  -d 'grant_type=client_credentials' \\\n"
+                + "  -d 'client_id=" + clientId + "'";
+    }
+
+    static String randomId() {
+        byte[] b = new byte[16];
+        new SecureRandom().nextBytes(b);
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(b);
+    }
+
+    static void require(boolean cond, String msg) {
+        if (!cond) throw new IllegalStateException(msg);
+    }
+
+    static String root(Throwable e) {
+        Throwable t = e;
+        while (t.getCause() != null) t = t.getCause();
+        return t.getClass().getSimpleName() + ": " + t.getMessage();
+    }
+
+    static String stripTrailingSlash(String s) {
+        return s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
+    }
+
+    static HttpClient trustAllClient() throws Exception {
+        TrustManager[] trustAll = {new X509TrustManager() {
+            public void checkClientTrusted(X509Certificate[] c, String a) {}
+            public void checkServerTrusted(X509Certificate[] c, String a) {}
+            public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+        }};
+        SSLContext ssl = SSLContext.getInstance("TLS");
+        ssl.init(null, trustAll, new SecureRandom());
+        return HttpClient.newBuilder().sslContext(ssl).build();
+    }
+}
