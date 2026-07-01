@@ -191,7 +191,10 @@
     <div class="hd"><span class="n">3</span><h2>Build the attestation &amp; proof JWTs</h2><span class="s" id="s3s"></span></div>
     <div class="bd">
       <p class="desc">The <b>Client Attestation JWT</b> (signed by the attester, binds the client key via <code>cnf</code>) plus a
-      <b>PoP JWT</b> or <b>DPoP proof</b> (signed by the client key, echoes the challenge). Headers/payloads decoded below.</p>
+      <b>PoP JWT</b> or <b>DPoP proof</b> (signed by the client key, echoes the challenge). Headers/payloads decoded below.
+      The attestation also carries a <code>workload</code> claim — attester-asserted attributes about the client workload
+      (<code>software_id</code>, <code>software_version</code>, <code>environment</code>, <code>instance_id</code>,
+      <code>runtime</code>, <code>host</code>, <code>git_commit</code>).</p>
       <div class="row"><button id="buildBtn" disabled>Build artifacts</button></div>
       <div id="artifacts"></div>
     </div>
@@ -227,6 +230,22 @@ const b64uStr = s => b64u(enc.encode(s));
 const j = o => JSON.stringify(o);
 const pretty = o => JSON.stringify(o, null, 2);
 let CFG={}, attester=null, client=null, challenge=null, artifacts=null;
+
+// Workload attributes the attester asserts about this client workload (the demo UI).
+// Carried as the attestation's "workload" claim; instance_id is stable per browser session.
+const SESSION_INSTANCE_ID = (crypto.randomUUID ? crypto.randomUUID()
+  : b64u(crypto.getRandomValues(new Uint8Array(16))));
+function buildWorkload(){
+  return {
+    software_id:      'pf-oidf-attestation-demo-ui',
+    software_version: CFG.software_version || '0.0.1-SNAPSHOT',
+    environment:      'demo',
+    instance_id:      SESSION_INSTANCE_ID,
+    runtime:          navigator.userAgent,
+    host:             location.host,
+    git_commit:       CFG.git_commit || 'unknown'
+  };
+}
 
 // ── diagram stage highlighting ──
 const CAPS = {
@@ -313,7 +332,8 @@ async function buildArtifacts(){
   const CLIENT_ID = $('#clientId').value || 'https://rp.example.com';
   const cnfJwk = await pubJwk(client,'instance-1');
   const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
-  const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600, cnf:{jwk:cnfJwk}};
+  const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
+    cnf:{jwk:cnfJwk}, workload:buildWorkload()};
   const attestation = await jws(attester, attHeader, attPayload);
 
   const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));

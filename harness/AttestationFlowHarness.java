@@ -47,6 +47,12 @@ public final class AttestationFlowHarness {
     static final String POP_TYP = "oauth-client-attestation-pop+jwt";
     static final String DPOP_TYP = "dpop+jwt";
 
+    // Workload identity the attester vouches for (carried as the attestation's "workload" claim).
+    static final String SOFTWARE_ID = "pf-oidf-attestation-harness";
+    static final String SOFTWARE_VERSION = "0.0.1-SNAPSHOT";
+    private static final String INSTANCE_ID = java.util.UUID.randomUUID().toString();
+    private static volatile Map<String, Object> WORKLOAD;
+
     public static void main(String[] args) throws Exception {
         // PingFederate serves a self-signed cert (CN=localhost) behind the TCP proxy;
         // accept it for this dev/test harness (chain + hostname).
@@ -111,6 +117,7 @@ public final class AttestationFlowHarness {
         String dpop = dpopJwt(instanceKey, tokenEndpoint, popChallenge);
 
         System.out.println("[2] built Client Attestation JWT (typ=" + ATTESTATION_TYP + ")");
+        System.out.println("    workload: " + JsonUtil.toJson(workload()));
         System.out.println("[3] built PoP JWT (typ=" + POP_TYP + ") and DPoP proof (typ=" + DPOP_TYP + ")");
         System.out.println();
         System.out.println("---- PoP-mode request headers (attest_jwt_client_auth) ----");
@@ -218,7 +225,55 @@ public final class AttestationFlowHarness {
         att.setIssuedAtToNow();
         att.setExpirationTime(NumericDate.fromSeconds(NumericDate.now().getValue() + 600L));
         att.setClaim("cnf", Map.of("jwk", publicParams(instanceKey)));
+        att.setClaim("workload", workload());
         return sign(attesterKey, "ES256", ATTESTATION_TYP, att);
+    }
+
+    /**
+     * Attester-asserted attributes describing the workload this attestation vouches for.
+     * Computed once per process (the instance_id is stable for the run). Env overrides:
+     * {@code OIDF_ENVIRONMENT}, {@code OIDF_GIT_COMMIT}, {@code HOSTNAME}.
+     */
+    static Map<String, Object> workload() {
+        Map<String, Object> w = WORKLOAD;
+        if (w == null) {
+            java.util.LinkedHashMap<String, Object> m = new java.util.LinkedHashMap<>();
+            m.put("software_id", SOFTWARE_ID);
+            m.put("software_version", SOFTWARE_VERSION);
+            m.put("environment", envOr("OIDF_ENVIRONMENT", "test"));
+            m.put("instance_id", INSTANCE_ID);
+            m.put("runtime", "java/" + System.getProperty("java.version")
+                    + " " + System.getProperty("java.vendor")
+                    + "; " + System.getProperty("os.name") + " " + System.getProperty("os.version"));
+            m.put("host", hostName());
+            m.put("git_commit", gitCommit());
+            WORKLOAD = w = java.util.Collections.unmodifiableMap(m);
+        }
+        return w;
+    }
+
+    static String envOr(String key, String dflt) {
+        String v = System.getenv(key);
+        return v != null && !v.isBlank() ? v : dflt;
+    }
+
+    static String hostName() {
+        String h = System.getenv("HOSTNAME");
+        if (h != null && !h.isBlank()) return h;
+        try { return java.net.InetAddress.getLocalHost().getHostName(); }
+        catch (Exception e) { return "unknown"; }
+    }
+
+    /** Short git commit: {@code $OIDF_GIT_COMMIT}, else {@code git rev-parse --short HEAD}, else "unknown". */
+    static String gitCommit() {
+        String env = System.getenv("OIDF_GIT_COMMIT");
+        if (env != null && !env.isBlank()) return env;
+        try {
+            Process p = new ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+                    .redirectErrorStream(true).start();
+            String out = new String(p.getInputStream().readAllBytes()).trim();
+            return p.waitFor() == 0 && !out.isBlank() ? out : "unknown";
+        } catch (Exception e) { return "unknown"; }
     }
 
     static String popJwt(PublicJsonWebKey instanceKey, String clientId, String audience, String challenge) throws Exception {

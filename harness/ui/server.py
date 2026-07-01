@@ -21,6 +21,7 @@ import json
 import os
 import socket
 import ssl
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -42,11 +43,29 @@ CONSOLE_URL = os.environ.get("CONSOLE_URL", "https://localhost:19999/pingfederat
 # issuance criterion (the actual client authentication is done by the attestation hook).
 CLIENT_ID = os.environ.get("CLIENT_ID", "https://rp.example.com")
 CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "demo-secret-123")
+# Workload attributes the demo UI advertises in its attestation's "workload" claim.
+# git_commit: $OIDF_GIT_COMMIT (Railway sets no git), else `git rev-parse`, else "unknown".
+SOFTWARE_VERSION = os.environ.get("SOFTWARE_VERSION", "0.0.1-SNAPSHOT")
+
+
+def _git_commit():
+    env = os.environ.get("OIDF_GIT_COMMIT")
+    if env:
+        return env
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                             cwd=HERE, capture_output=True, text=True, timeout=3)
+        return out.stdout.strip() or "unknown"
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 # Bind: 0.0.0.0 so it works both locally and on Railway (which injects $PORT).
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("PORT", "8800"))
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+GIT_COMMIT = _git_commit()
 # Accept PF's self-signed cert for this dev/test tool.
 SSL_CTX = ssl._create_unverified_context()
 
@@ -88,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
                 "token_endpoint": TOKEN_ENDPOINT,
                 "console_url": CONSOLE_URL,
                 "client_id": CLIENT_ID,
+                "git_commit": GIT_COMMIT,
+                "software_version": SOFTWARE_VERSION,
             }))
         else:
             self._send(404, json.dumps({"error": "not found"}))
