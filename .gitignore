@@ -42,3 +42,6 @@ com/pingidentity/ps/oidf/servlet/trustanchor/OpenIdFederationServlet.java
 # ── Local Claude Code settings ──
 .claude/settings.local.json
 summary.txt
+
+# Build mirror (sources are copied here from ./com at build time)
+src/main/

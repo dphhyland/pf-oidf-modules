@@ -3,6 +3,8 @@
  */
 package com.pingidentity.ps.oidf.common;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.jose4j.jwt.JwtClaims;
 import org.jose4j.jwt.MalformedClaimException;
@@ -19,14 +21,16 @@ public final class ClientAttestation {
     private final Map<String, Object> cnfJwk;
     private final long expEpochSeconds;
     private final long iatEpochSeconds;
+    private final List<Map<String, Object>> authorizationDetails;
     private final String raw;
 
-    public ClientAttestation(String attesterIssuer, String clientId, Map<String, Object> cnfJwk, long expEpochSeconds, long iatEpochSeconds, String raw) {
+    public ClientAttestation(String attesterIssuer, String clientId, Map<String, Object> cnfJwk, long expEpochSeconds, long iatEpochSeconds, List<Map<String, Object>> authorizationDetails, String raw) {
         this.attesterIssuer = attesterIssuer;
         this.clientId = clientId;
         this.cnfJwk = cnfJwk;
         this.expEpochSeconds = expEpochSeconds;
         this.iatEpochSeconds = iatEpochSeconds;
+        this.authorizationDetails = authorizationDetails;
         this.raw = raw;
     }
 
@@ -45,7 +49,23 @@ public final class ClientAttestation {
         }
         long exp = claims.hasClaim("exp") ? claims.getExpirationTime().getValue() : 0L;
         long iat = claims.hasClaim("iat") ? claims.getIssuedAt().getValue() : 0L;
-        return new ClientAttestation(attester, clientId, jwk, exp, iat, raw);
+        return new ClientAttestation(attester, clientId, jwk, exp, iat, authorizationDetails(claims), raw);
+    }
+
+    /** The optional RFC 9396 {@code authorization_details} entitlement asserted by the attester. */
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> authorizationDetails(JwtClaims claims) {
+        Object value = claims.getClaimValue("authorization_details");
+        if (!(value instanceof List)) {
+            return List.of();
+        }
+        ArrayList<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : (List<?>) value) {
+            if (item instanceof Map) {
+                out.add((Map<String, Object>) item);
+            }
+        }
+        return out;
     }
 
     public String attesterIssuer() {
@@ -66,6 +86,11 @@ public final class ClientAttestation {
 
     public long iatEpochSeconds() {
         return this.iatEpochSeconds;
+    }
+
+    /** The attester-asserted RFC 9396 entitlement ({@code authorization_details}); empty if none. */
+    public List<Map<String, Object>> authorizationDetails() {
+        return this.authorizationDetails;
     }
 
     public String raw() {

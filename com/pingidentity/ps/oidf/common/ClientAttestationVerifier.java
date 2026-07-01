@@ -62,6 +62,22 @@ public final class ClientAttestationVerifier {
     public ClientAttestationResult verify(String attestationHeader, String popHeader, String dpopHeader,
                                           String requestMethod, String requestUri, String requestedClientId)
             throws ClientAttestationException {
+        return this.verify(attestationHeader, popHeader, dpopHeader, requestMethod, requestUri, requestedClientId, null);
+    }
+
+    /**
+     * As {@link #verify(String, String, String, String, String, String)}, additionally authorizing the
+     * token request's RFC 9396 {@code authorization_details} against the entitlement the attestation
+     * asserts. Authentication (attestation + proof of possession) is verified first; only then is the
+     * requested access authorized. The returned result carries both the attested entitlement and the
+     * granted (authorized) details.
+     *
+     * @param requestedAuthorizationDetailsJson the {@code authorization_details} request parameter (JSON array), or null
+     */
+    public ClientAttestationResult verify(String attestationHeader, String popHeader, String dpopHeader,
+                                          String requestMethod, String requestUri, String requestedClientId,
+                                          String requestedAuthorizationDetailsJson)
+            throws ClientAttestationException {
         try {
             if (attestationHeader == null || attestationHeader.isBlank()) {
                 throw ClientAttestationException.invalidClient("Missing OAuth-Client-Attestation header");
@@ -86,10 +102,17 @@ public final class ClientAttestationVerifier {
                         "client_id request parameter does not match the attestation 'sub'");
             }
 
-            if (hasPop) {
-                return this.verifyPopMode(attestation, popHeader);
-            }
-            return this.verifyDpopMode(attestation, dpopHeader, requestMethod, requestUri);
+            // Authenticate (attestation + proof of possession) first ...
+            ClientAttestationResult authenticated = hasPop
+                    ? this.verifyPopMode(attestation, popHeader)
+                    : this.verifyDpopMode(attestation, dpopHeader, requestMethod, requestUri);
+
+            // ... then authorize the requested access against the attested RFC 9396 entitlement.
+            List<Map<String, Object>> entitled = attestation.authorizationDetails();
+            List<Map<String, Object>> granted =
+                    RarEntitlement.authorize(RarEntitlement.parseArray(requestedAuthorizationDetailsJson), entitled);
+            return new ClientAttestationResult(authenticated.clientId(), authenticated.cnfJwk(),
+                    authenticated.mode(), authenticated.attesterIssuer(), authenticated.proofJti(), entitled, granted);
         } catch (ClientAttestationException e) {
             throw e;
         } catch (Exception e) {

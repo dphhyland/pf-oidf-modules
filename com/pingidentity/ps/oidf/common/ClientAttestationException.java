@@ -14,6 +14,10 @@ public final class ClientAttestationException extends Exception {
     public static final String INVALID_CLIENT = "invalid_client";
     public static final String USE_ATTESTATION_CHALLENGE = "use_attestation_challenge";
     public static final String USE_FRESH_ATTESTATION = "use_fresh_attestation";
+    /** RFC 9396 §5: the requested authorization_details is malformed or of an unknown type. */
+    public static final String INVALID_AUTHORIZATION_DETAILS = "invalid_authorization_details";
+    /** The request is well-formed but exceeds what the attestation entitles the client to. */
+    public static final String ACCESS_DENIED = "access_denied";
 
     private final String error;
 
@@ -45,5 +49,13 @@ public final class ClientAttestationException extends Exception {
 
     public static ClientAttestationException useFreshAttestation(String message) {
         return new ClientAttestationException(USE_FRESH_ATTESTATION, message);
+    }
+
+    public static ClientAttestationException invalidAuthorizationDetails(String message) {
+        return new ClientAttestationException(INVALID_AUTHORIZATION_DETAILS, message);
+    }
+
+    public static ClientAttestationException accessDenied(String message) {
+        return new ClientAttestationException(ACCESS_DENIED, message);
     }
 }

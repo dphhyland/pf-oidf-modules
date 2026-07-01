@@ -37,6 +37,7 @@
   .kv{font:12px var(--mono);color:var(--mut)} .kv b{color:var(--ink);font-weight:600}
   .muted{color:var(--mut)} .accent{color:var(--acc)} code{font-family:var(--mono);color:var(--warn)}
   .flowmode{margin-left:auto}
+  select.sel{background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px;font:12px var(--mono);margin-left:4px}
   .hint{font-size:12px;color:var(--mut);margin-top:8px}
   a{color:var(--acc)}
   /* ── component diagram ── */
@@ -210,6 +211,21 @@
       view/edit them). The request reaches the hook, which runs the verifier and — for this demo's untrusted attester —
       rejects with <code>attestation_validation_failed</code>. A successful token additionally needs the attester to be
       <b>OpenID-Federation-trusted</b> (a trust anchor/controller), which the demo doesn't yet stand up.</p>
+      <p class="lab accent" style="margin-top:4px">requested access — RFC 9396 <code>authorization_details</code></p>
+      <p class="desc" style="margin:0 0 8px">The attestation asserts the entitlement <code>sales_agent → EMEA</code> (see the decoded
+        attestation above). Choose what this agent asks for; the <b>verifier decision</b> is computed by the same containment
+        rule the <code>ClientAttestationVerifier</code> runs — a request is granted only if it stays within the attested
+        <code>sales_regions</code> and <code>actions</code> (proven in <code>harness&nbsp;selfverify</code>).</p>
+      <div class="row">
+        <label class="opt">region
+          <select id="rarRegion" class="sel"><option>EMEA</option><option>AMER</option><option>APAC</option></select></label>
+        <label class="opt">action
+          <select id="rarAction" class="sel"><option>create_opportunity</option><option>read_accounts</option><option>submit_quote</option><option>delete_account</option></select></label>
+        <span id="rarDecision"></span>
+      </div>
+      <pre id="rarOut" class="muted">—</pre>
+      <p class="hint">The live token call below demonstrates <b>authentication</b> and does not yet enforce RAR (that's the
+        PingFederate attribute-contract phase); the entitlement decision above is the enforcement layer, verified in the core.</p>
       <div class="row">
         <input id="clientId" value="https://rp.example.com" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font:12px var(--mono);min-width:240px">
         <button id="tokenBtn" disabled>Send token request</button>
@@ -245,6 +261,34 @@ function buildWorkload(){
     host:             location.host,
     git_commit:       CFG.git_commit || 'unknown'
   };
+}
+
+// RFC 9396 entitlement the attester asserts in the attestation: a sales agent limited to EMEA.
+const ENTITLEMENT = [{
+  type:          'sales_agent',
+  actions:       ['read_accounts','create_opportunity','submit_quote'],
+  locations:     ['https://crm.contoso.com/api'],
+  sales_regions: ['EMEA'],
+  privileges:    ['quota:standard']
+}];
+// The token request's requested authorization_details, driven by the step-4 selectors.
+function requestedRar(){
+  const region = (document.querySelector('#rarRegion')||{}).value || 'EMEA';
+  const action = (document.querySelector('#rarAction')||{}).value || 'create_opportunity';
+  return [{type:'sales_agent', actions:[action], locations:['https://crm.contoso.com/api'], sales_regions:[region]}];
+}
+// Client-side mirror of RarEntitlement.authorize — the exact containment rule the verifier runs.
+const RAR_SET_FIELDS = ['actions','locations','datatypes','privileges','sales_regions'];
+const subset = (a,b) => (a||[]).every(x => (b||[]).includes(x));
+function authorizeRar(requested, entitled){
+  for(const req of requested){
+    if(!req.type) return {ok:false, error:'invalid_authorization_details', reason:"entry missing 'type'"};
+    const match = entitled.find(ent => ent.type===req.type
+      && RAR_SET_FIELDS.every(f => !(f in ent) || subset(req[f], ent[f])));
+    if(!match) return {ok:false, error:'access_denied',
+      reason:`type '${req.type}' exceeds the attested entitlement`};
+  }
+  return {ok:true};
 }
 
 // ── diagram stage highlighting ──
@@ -333,7 +377,7 @@ async function buildArtifacts(){
   const cnfJwk = await pubJwk(client,'instance-1');
   const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
   const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
-    cnf:{jwk:cnfJwk}, workload:buildWorkload()};
+    cnf:{jwk:cnfJwk}, workload:buildWorkload(), authorization_details:ENTITLEMENT};
   const attestation = await jws(attester, attHeader, attPayload);
 
   const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
@@ -372,8 +416,19 @@ $('#buildBtn').onclick = async () => {
     + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
   setStatus('#s3s', mode()==='pop'?'attestation + PoP built':'attestation + DPoP built');
   highlightStage(3);
-  $('#tokenBtn').disabled=false; openStep('#s4'); renderCurl();
+  $('#tokenBtn').disabled=false; openStep('#s4'); renderCurl(); renderRar();
 };
+
+// RFC 9396 requested access → the same containment decision the verifier makes.
+function renderRar(){
+  const req = requestedRar();
+  const dec = authorizeRar(req, ENTITLEMENT);
+  const out = $('#rarOut'); if(out){ out.textContent = pretty(req); out.className=''; }
+  const d = $('#rarDecision');
+  if(d){ d.innerHTML = dec.ok
+    ? '<span class="pill ok">✔ granted</span>'
+    : `<span class="pill err">✘ ${dec.error}</span> <span class="muted">${dec.reason}</span>`; }
+}
 
 function renderCurl(){
   const a = artifacts; if(!a) return;
@@ -403,6 +458,8 @@ $('#tokenBtn').onclick = async () => {
 };
 
 document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
+['#rarRegion','#rarAction'].forEach(s=>{ const el=$(s); if(el) el.onchange=renderRar; });
+renderRar();
 
 // click a step header to re-highlight its stage in the diagram
 document.querySelectorAll('main .step .hd').forEach((hd,i)=>{

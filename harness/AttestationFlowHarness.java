@@ -116,8 +116,11 @@ public final class AttestationFlowHarness {
         // 3b) DPoP combined-mode proof (alternative to the PoP; nonce = challenge)
         String dpop = dpopJwt(instanceKey, tokenEndpoint, popChallenge);
 
+        String requestedRar = toJsonArray(requestedAccess(envOr("OIDF_SALES_REGION", "EMEA"), "create_opportunity"));
         System.out.println("[2] built Client Attestation JWT (typ=" + ATTESTATION_TYP + ")");
-        System.out.println("    workload: " + JsonUtil.toJson(workload()));
+        System.out.println("    workload   : " + JsonUtil.toJson(workload()));
+        System.out.println("    entitlement: " + toJsonArray(salesAgentEntitlement()));
+        System.out.println("    requesting : " + requestedRar);
         System.out.println("[3] built PoP JWT (typ=" + POP_TYP + ") and DPoP proof (typ=" + DPOP_TYP + ")");
         System.out.println();
         System.out.println("---- PoP-mode request headers (attest_jwt_client_auth) ----");
@@ -125,10 +128,10 @@ public final class AttestationFlowHarness {
         System.out.println("OAuth-Client-Attestation-PoP: " + pop);
         System.out.println();
         System.out.println("---- ready-to-run curl (PoP mode) ----");
-        System.out.println(curl(tokenEndpoint, clientId, "OAuth-Client-Attestation-PoP", pop, attestation, null));
+        System.out.println(curl(tokenEndpoint, clientId, "OAuth-Client-Attestation-PoP", pop, attestation, requestedRar));
         System.out.println();
         System.out.println("---- DPoP combined-mode (attest_jwt_client_auth_dpop) ----");
-        System.out.println(curl(tokenEndpoint, clientId, "DPoP", dpop, attestation, null));
+        System.out.println(curl(tokenEndpoint, clientId, "DPoP", dpop, attestation, requestedRar));
         System.out.println();
         System.out.println("NOTE: the token endpoint accepts these only once PingFederate is configured with an");
         System.out.println("      OAuth AS, the client registered (public client + attestation_required=true), and an");
@@ -210,6 +213,28 @@ public final class AttestationFlowHarness {
             System.out.println("[FAIL] tampered DPoP key was accepted (should be rejected)"); fail++;
         } catch (Exception e) { System.out.println("[PASS] tampered DPoP key rejected (" + root(e) + ")"); pass++; }
 
+        // RFC 9396 entitlement: a request within the attested sales_regions is granted; outside is denied.
+        java.lang.reflect.Method verify7 = verifierClass.getMethod("verify",
+                String.class, String.class, String.class, String.class, String.class, String.class, String.class);
+
+        String challengeR = (String) issue.invoke(challengeService);
+        String popR = popJwt(instanceKey, CLIENT_ID, OP_ISSUER, challengeR);
+        String reqEmea = toJsonArray(requestedAccess("EMEA", "create_opportunity"));
+        try {
+            Object res = verify7.invoke(verifier, att, popR, null, "POST", TOKEN_ENDPOINT, CLIENT_ID, reqEmea);
+            Object granted = res.getClass().getMethod("grantedAuthorizationDetails").invoke(res);
+            require(granted instanceof List && !((List<?>) granted).isEmpty(), "expected granted authorization_details");
+            System.out.println("[PASS] RAR within entitlement granted (EMEA/create_opportunity)"); pass++;
+        } catch (Exception e) { System.out.println("[FAIL] RAR within entitlement: " + root(e)); fail++; }
+
+        String challengeR2 = (String) issue.invoke(challengeService);
+        String popR2 = popJwt(instanceKey, CLIENT_ID, OP_ISSUER, challengeR2);
+        String reqAmer = toJsonArray(requestedAccess("AMER", "create_opportunity"));
+        try {
+            verify7.invoke(verifier, att, popR2, null, "POST", TOKEN_ENDPOINT, CLIENT_ID, reqAmer);
+            System.out.println("[FAIL] RAR outside entitlement (AMER) was accepted"); fail++;
+        } catch (Exception e) { System.out.println("[PASS] RAR outside entitlement rejected (" + root(e) + ")"); pass++; }
+
         System.out.println();
         System.out.println("selfverify: " + pass + " passed, " + fail + " failed");
         if (fail > 0) System.exit(1);
@@ -226,7 +251,40 @@ public final class AttestationFlowHarness {
         att.setExpirationTime(NumericDate.fromSeconds(NumericDate.now().getValue() + 600L));
         att.setClaim("cnf", Map.of("jwk", publicParams(instanceKey)));
         att.setClaim("workload", workload());
+        att.setClaim("authorization_details", salesAgentEntitlement());
         return sign(attesterKey, "ES256", ATTESTATION_TYP, att);
+    }
+
+    /**
+     * The RFC 9396 entitlement the attester asserts: a Microsoft-agentic-style sales agent limited to
+     * the EMEA sales region (carried as the attestation's {@code authorization_details}).
+     */
+    static List<Map<String, Object>> salesAgentEntitlement() {
+        return List.of(Map.of(
+                "type", "sales_agent",
+                "actions", List.of("read_accounts", "create_opportunity", "submit_quote"),
+                "locations", List.of("https://crm.contoso.com/api"),
+                "sales_regions", List.of("EMEA"),
+                "privileges", List.of("quota:standard")));
+    }
+
+    /** A token request's {@code authorization_details} asking to act in one region with one action. */
+    static List<Map<String, Object>> requestedAccess(String region, String action) {
+        return List.of(Map.of(
+                "type", "sales_agent",
+                "actions", List.of(action),
+                "locations", List.of("https://crm.contoso.com/api"),
+                "sales_regions", List.of(region)));
+    }
+
+    /** Serialize a list of objects to a compact JSON array (jose4j only serializes maps). */
+    static String toJsonArray(List<Map<String, Object>> arr) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < arr.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append(JsonUtil.toJson(arr.get(i)));
+        }
+        return sb.append(']').toString();
     }
 
     /**
@@ -334,11 +392,14 @@ public final class AttestationFlowHarness {
     }
 
     static String curl(String tokenEndpoint, String clientId, String proofHeader, String proof,
-                       String attestation, String ignored) {
+                       String attestation, String authorizationDetailsJson) {
+        String rar = authorizationDetailsJson == null ? ""
+                : "  -d 'authorization_details=" + authorizationDetailsJson + "' \\\n";
         return "curl -k -X POST '" + tokenEndpoint + "' \\\n"
                 + "  -H 'OAuth-Client-Attestation: " + attestation + "' \\\n"
                 + "  -H '" + proofHeader + ": " + proof + "' \\\n"
                 + "  -d 'grant_type=client_credentials' \\\n"
+                + rar
                 + "  -d 'client_id=" + clientId + "'";
     }
 
