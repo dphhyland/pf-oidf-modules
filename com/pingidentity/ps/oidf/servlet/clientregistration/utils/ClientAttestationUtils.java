@@ -77,9 +77,24 @@ public final class ClientAttestationUtils {
             ClientAttestationConfig config = ClientAttestationUtils.buildConfig(inParameters, opIssuer, requestUri);
             ClientAttestationVerifier verifier = new ClientAttestationVerifier(resolver, config, AttestationSupport.replayCache(), AttestationSupport.challengeService());
 
-            ClientAttestationResult result = verifier.verify(attestation, pop, dpop, request.getMethod(), requestUri, requestedClientId);
+            // Prefer the standard RFC 9396 parameter, but PingFederate's AS pre-validates
+            // 'authorization_details' against the client's configured RAR types and rejects
+            // unregistered types before this issuance criterion runs. Fall back to a dedicated
+            // parameter so the attestation-bound entitlement check works without full PF RAR config.
+            String authorizationDetails = request.getParameter("authorization_details");
+            if (authorizationDetails == null || authorizationDetails.isBlank()) {
+                authorizationDetails = request.getParameter("oidf_requested_access");
+            }
+            ClientAttestationResult result = verifier.verify(attestation, pop, dpop, request.getMethod(), requestUri, requestedClientId, authorizationDetails);
+            if (!result.grantedAuthorizationDetails().isEmpty()) {
+                // Stash the granted RFC 9396 authorization_details so an access-token-manager attribute
+                // mapping can surface it into the issued token (OGNL reads the HttpRequest attribute).
+                request.setAttribute("oidf.authorization_details", authorizationDetails);
+            }
             if (LOGGER.isInfoEnabled()) {
-                LOGGER.info((Object) ("Attestation-based client authentication succeeded for client_id=" + result.clientId() + " mode=" + result.mode() + " attester=" + result.attesterIssuer()));
+                LOGGER.info((Object) ("Attestation-based client authentication succeeded for client_id=" + result.clientId()
+                        + " mode=" + result.mode() + " attester=" + result.attesterIssuer()
+                        + " granted_authorization_details=" + result.grantedAuthorizationDetails().size()));
             }
             return true;
         } catch (ClientAttestationException e) {

@@ -436,6 +436,7 @@ function renderRar(){
   if(btn && artifacts){
     btn.disabled = !dec.ok;
     btn.title = dec.ok ? '' : `blocked by entitlement: ${dec.reason}`;
+    renderCurl();   // keep the equivalent curl in sync with the chosen request
   }
   return dec;
 }
@@ -446,6 +447,7 @@ function renderCurl(){
     `  -H 'OAuth-Client-Attestation: ${a.attestation}' \\`,
     `  -H '${a.proofHeaderName}: ${a.proof}' \\`,
     `  -d 'grant_type=client_credentials' \\`,
+    `  -d 'oidf_requested_access=${JSON.stringify(requestedRar())}' \\`,
     `  -d 'client_id=${a.CLIENT_ID}'`];
   $('#curlOut').textContent = lines.join('\n'); $('#curlOut').className='';
 }
@@ -456,7 +458,8 @@ $('#tokenBtn').onclick = async () => {
   setStatus('#s4s','calling token endpoint…');
   const headers = {'OAuth-Client-Attestation': a.attestation};
   headers[a.proofHeaderName] = a.proof;
-  const form = {grant_type:'client_credentials', client_id:a.CLIENT_ID};
+  const form = {grant_type:'client_credentials', client_id:a.CLIENT_ID,
+    oidf_requested_access: JSON.stringify(requestedRar())};
   const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
     body:j({headers, form})}).then(r=>r.json());
   let body; try{ body=JSON.parse(r.body);}catch{ body=r.body; }

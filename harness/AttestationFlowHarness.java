@@ -21,9 +21,11 @@
  * See harness/run.sh.
  */
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
 import java.util.List;
@@ -132,10 +134,37 @@ public final class AttestationFlowHarness {
         System.out.println();
         System.out.println("---- DPoP combined-mode (attest_jwt_client_auth_dpop) ----");
         System.out.println(curl(tokenEndpoint, clientId, "DPoP", dpop, attestation, requestedRar));
+
+        // Execute the PoP-mode token request to demonstrate LIVE RFC 9396 enforcement.
+        executeToken(http, tokenEndpoint, clientId, attestation, pop, requestedRar);
         System.out.println();
         System.out.println("NOTE: the token endpoint accepts these only once PingFederate is configured with an");
         System.out.println("      OAuth AS, the client registered (public client + attestation_required=true), and an");
         System.out.println("      issuance criterion calling ClientAttestationUtils.validateClientAttestation(#this).");
+    }
+
+    /** POSTs the PoP-mode token request (with authorization_details) and prints PF's response. */
+    private static void executeToken(HttpClient http, String tokenEndpoint, String clientId,
+                                     String attestation, String pop, String authorizationDetailsJson) throws Exception {
+        String secret = envOr("OIDF_CLIENT_SECRET", "demo-secret-123");
+        String form = "grant_type=client_credentials"
+                + "&client_id=" + url(clientId)
+                + "&client_secret=" + url(secret)
+                + "&oidf_requested_access=" + url(authorizationDetailsJson);
+        HttpRequest req = HttpRequest.newBuilder(URI.create(tokenEndpoint))
+                .header("Content-Type", "application/x-www-form-urlencoded")
+                .header("OAuth-Client-Attestation", attestation)
+                .header("OAuth-Client-Attestation-PoP", pop)
+                .POST(HttpRequest.BodyPublishers.ofString(form)).build();
+        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+        System.out.println();
+        System.out.println("==== LIVE token response (PoP mode) ====");
+        System.out.println("HTTP " + resp.statusCode());
+        System.out.println(resp.body());
+    }
+
+    static String url(String s) {
+        return URLEncoder.encode(s, StandardCharsets.UTF_8);
     }
 
     // ----------------------------------------------------------- selfverify mode
