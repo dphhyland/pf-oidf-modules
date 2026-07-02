@@ -12,6 +12,7 @@ import com.pingidentity.ps.oidf.common.ClientAttestationVerifier;
 import com.pingidentity.ps.oidf.common.FederationAttesterKeyResolver;
 import com.pingidentity.ps.oidf.common.HttpTrustControllerGateway;
 import com.pingidentity.ps.oidf.common.JdkHttpGetClient;
+import com.pingidentity.ps.oidf.common.Jwks;
 import com.pingidentity.ps.oidf.common.StaticAttesterKeyResolver;
 import com.pingidentity.ps.oidf.common.TrustChainValidator;
 import com.pingidentity.ps.oidf.common.TrustControllerGateway;
@@ -91,6 +92,11 @@ public final class ClientAttestationUtils {
                 // mapping can surface it into the issued token (OGNL reads the HttpRequest attribute).
                 request.setAttribute("oidf.authorization_details", authorizationDetails);
             }
+            // Publish the verified attestation context for the RAR -> PingAuthorize AuthorizationDetailProcessor
+            // (pf-rar-paz-plugin: AttestationSubject.REQUEST_ATTRIBUTE). Decoupled by a shared string key and a
+            // plain Map, so neither module depends on the other.
+            request.setAttribute("com.pingidentity.ps.oidf.rar.attestation_context",
+                    ClientAttestationUtils.attestationContext(result));
             if (LOGGER.isInfoEnabled()) {
                 LOGGER.info((Object) ("Attestation-based client authentication succeeded for client_id=" + result.clientId()
                         + " mode=" + result.mode() + " attester=" + result.attesterIssuer()
@@ -104,6 +110,25 @@ public final class ClientAttestationUtils {
             LOGGER.info((Object) "Attestation-based client authentication failed", (Throwable) e);
             return false;
         }
+    }
+
+    /**
+     * Builds the attestation context handed to the RAR {@code AuthorizationDetailProcessor}
+     * (pf-rar-paz-plugin): the authenticated subject/{@code client_id}, the attested RFC 9396 entitlement
+     * ceiling, and the confirmed instance-key thumbprint. Consumed via a request attribute so the RAR
+     * decision can be bounded by what the attester actually vouched.
+     */
+    private static Map<String, Object> attestationContext(ClientAttestationResult result) {
+        Map<String, Object> ctx = new java.util.LinkedHashMap<>();
+        ctx.put("sub", result.clientId());
+        ctx.put("client_id", result.clientId());
+        ctx.put("entitlement", result.entitledAuthorizationDetails());
+        try {
+            ctx.put("cnf_thumbprint", Jwks.thumbprint(result.cnfJwk()));
+        } catch (Exception e) {
+            LOGGER.info((Object) "could not compute cnf thumbprint for attestation context", (Throwable) e);
+        }
+        return ctx;
     }
 
     private static volatile AttesterKeyResolver mockResolver;
@@ -205,6 +230,16 @@ public final class ClientAttestationUtils {
         Set<String> dpopAlgs = ClientAttestationUtils.setProp(inParameters, "extproperties.attestation_dpop_algs");
         if (dpopAlgs != null) {
             b.dpopAlgorithms(dpopAlgs);
+        }
+        // Optional attestation encoding policy (default: accept plain JWT and SD-JWT).
+        String format = ClientAttestationUtils.stringProp(inParameters, "extproperties.attestation_format");
+        if (format != null) {
+            if ("jwt".equalsIgnoreCase(format)) {
+                b.acceptSdJwt(false);
+            } else if ("sd-jwt".equalsIgnoreCase(format) || "sd_jwt".equalsIgnoreCase(format)) {
+                b.requireSdJwt(true);
+            }
+            // "either" (or anything else) leaves the default: accept both encodings
         }
         return b.build();
     }

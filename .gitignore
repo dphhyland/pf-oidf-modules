@@ -45,3 +45,4 @@ summary.txt
 
 # Build mirror (sources are copied here from ./com at build time)
 src/main/
+pf-rar-paz-plugin/paz/

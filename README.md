@@ -10,6 +10,10 @@ leaf endpoints, explicit client registration, and runtime trust-chain validation
   `attest_jwt_client_auth_dpop` ([draft-ietf-oauth-attestation-based-client-auth-09](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-09.html)),
   with the Client Attester trusted via the federation trust chain, a challenge endpoint for
   replay/freshness, and DPoP "combined mode" ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449))
+- **Optional SD-JWT attestation encoding** — the Client Attestation may be presented as an SD-JWT so the
+  client selectively discloses only the claims a given AS needs (e.g. one entitlement entry, minimal
+  `workload`). Advertised via `client_attestation_formats_supported` and gated per client by the
+  `attestation_format` extended property. See [docs/sd-jwt-attestation.md](docs/sd-jwt-attestation.md).
 
 > The modules **augment** PingFederate's native client authentication: PingFederate identifies the
 > client, and a static utility invoked from **OAuth token-endpoint issuance criteria** performs the
@@ -150,6 +154,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `clientAttestationSigningAlgValuesSupported` | `RS256,PS256,ES256` | Advertised attestation algs |
 | `clientAttestationPopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised PoP algs |
 | `dpopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised DPoP algs |
+| `clientAttestationFormatsSupported` | `jwt,sd-jwt` | Advertised attestation encodings (`client_attestation_formats_supported`) |
 | `attestationChallengeEndpointEnabled` | `true` | Advertise `challenge_endpoint` in metadata |
 
 ### Registration servlet (`OpenIdRegistrationServlet` → `RegistrationConfiguration`)
@@ -184,6 +189,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `attestation_accepted_algs` | RS/PS/ES/EdDSA | Allowed attestation signing algs |
 | `attestation_pop_algs` | RS/PS/ES/EdDSA | Allowed PoP signing algs |
 | `attestation_dpop_algs` | RS/PS/ES/EdDSA | Allowed DPoP signing algs |
+| `attestation_format` | accept both | `jwt` = plain only · `sd-jwt` = require SD-JWT · `either` (default) |
 
 ---
 

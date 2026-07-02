@@ -75,6 +75,10 @@
     <label class="opt"><input type="radio" name="mode" value="pop" checked> PoP mode</label>
     <label class="opt"><input type="radio" name="mode" value="dpop"> DPoP combined</label>
   </span>
+  <span class="row">
+    <label class="opt"><input type="radio" name="enc" value="jwt" checked> Plain JWT</label>
+    <label class="opt"><input type="radio" name="enc" value="sdjwt"> SD-JWT · selective disclosure</label>
+  </span>
 </header>
 <main>
   <p class="muted">This drives the <b>live</b> PingFederate instance through a local proxy. Each step shows exactly what
@@ -323,6 +327,10 @@ async function importAttester(){
 }
 
 function mode(){ return document.querySelector('input[name=mode]:checked').value; }
+function encoding(){ const el=document.querySelector('input[name=enc]:checked'); return el?el.value:'jwt'; }
+async function sha256b64u(s){ return b64u(await crypto.subtle.digest('SHA-256', enc.encode(s))); }
+async function mkObjDisc(name,value){ const salt=b64u(crypto.getRandomValues(new Uint8Array(16))); const d=b64uStr(j([salt,name,value])); return {name,value,d,digest:await sha256b64u(d)}; }
+async function mkArrDisc(value){ const salt=b64u(crypto.getRandomValues(new Uint8Array(16))); const d=b64uStr(j([salt,value])); return {value,d,digest:await sha256b64u(d)}; }
 function openStep(id){ $(id).classList.add('open'); }
 function setStatus(id,txt,cls){ const e=$(id); e.textContent=txt||''; e.className='s '+(cls||''); }
 
@@ -377,27 +385,43 @@ async function buildArtifacts(){
   const now = Math.floor(Date.now()/1000);
   const CLIENT_ID = $('#clientId').value || 'https://rp.example.com';
   const cnfJwk = await pubJwk(client,'instance-1');
-  const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
-  const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
-    cnf:{jwk:cnfJwk}, workload:buildWorkload(), authorization_details:ENTITLEMENT};
-  const attestation = await jws(attester, attHeader, attPayload);
+  const isSd = encoding()==='sdjwt';
+  let attestation, attHeader, attPayload, sdjwt=null, sdHash=null;
+  if(isSd){
+    // Make each workload field and the entitlement entry a selective disclosure; reveal only a subset.
+    const REVEAL = new Set(['software_id','software_version','environment']);
+    const wlDiscs = [];
+    for(const [k,v] of Object.entries(buildWorkload())){ wlDiscs.push({...(await mkObjDisc(k,v)), revealed:REVEAL.has(k)}); }
+    const entDisc = {...(await mkArrDisc(ENTITLEMENT[0])), name:'authorization_details[0]', revealed:true};
+    attHeader = {alg:'ES256', typ:'oauth-client-attestation+sd-jwt', kid:'mock-attester-1'};
+    attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600, cnf:{jwk:cnfJwk},
+      _sd_alg:'sha-256', authorization_details:[{'...':entDisc.digest}], workload:{_sd:wlDiscs.map(x=>x.digest)}};
+    const issuerJwt = await jws(attester, attHeader, attPayload);
+    const revealed = [entDisc, ...wlDiscs.filter(x=>x.revealed)];
+    attestation = issuerJwt + '~' + revealed.map(x=>x.d).join('~') + '~';   // issuer~disclosures~ (KB-JWT is the PoP)
+    sdHash = await sha256b64u(attestation);
+    sdjwt = {disclosures:[entDisc, ...wlDiscs]};
+  } else {
+    attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
+    attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
+      cnf:{jwk:cnfJwk}, workload:buildWorkload(), authorization_details:ENTITLEMENT};
+    attestation = await jws(attester, attHeader, attPayload);
+  }
 
   const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
   let proofHeaderName, proof, proofHeader, proofPayload;
   if(mode()==='pop'){
     proofHeaderName='OAuth-Client-Attestation-PoP';
     proofHeader={alg:'ES256', typ:'oauth-client-attestation-pop+jwt', kid:'instance-1'};
-    // challenge omitted: the challenge servlet and the runtime hook use separate
-    // stores, so an issued challenge isn't yet bound into the token request.
     proofPayload={iss:CLIENT_ID, aud:CFG.token_endpoint, jti, iat:now};
-    proof = await jws(client, proofHeader, proofPayload);
   } else {
     proofHeaderName='DPoP';
     proofHeader={alg:'ES256', typ:'dpop+jwt', jwk:cnfJwk};
     proofPayload={htm:'POST', htu:CFG.token_endpoint, jti, iat:now};
-    proof = await jws(client, proofHeader, proofPayload);
   }
-  return {CLIENT_ID, attestation, attHeader, attPayload, proofHeaderName, proof, proofHeader, proofPayload};
+  if(isSd) proofPayload.sd_hash = sdHash;   // Key-Binding: bind the exact SD-JWT + disclosures
+  proof = await jws(client, proofHeader, proofPayload);
+  return {CLIENT_ID, attestation, attHeader, attPayload, proofHeaderName, proof, proofHeader, proofPayload, sdjwt};
 }
 
 function artBlock(title, jwt, dec){
@@ -410,12 +434,33 @@ function artBlock(title, jwt, dec){
     <p class="lab muted">compact JWT</p><pre class="muted">${jwt}</pre></div>`;
 }
 
+function sdBlock(a){
+  const rows = a.sdjwt.disclosures.map(d=>`<tr>
+      <td style="padding:2px 8px">${d.revealed?'<span class="pill ok">disclosed</span>':'<span class="pill warn">withheld</span>'}</td>
+      <td class="kv" style="padding:2px 8px"><b>${d.name}</b></td>
+      <td class="muted" style="padding:2px 8px">${d.revealed?('= '+JSON.stringify(d.value)):'hash only — not sent to this AS'}</td>
+    </tr>`).join('');
+  return `<div style="margin:14px 0">
+    <p class="lab accent">Client Attestation — SD-JWT (header OAuth-Client-Attestation)</p>
+    <div class="jwt">
+      <div><p class="lab h">issuer JWT header</p><pre>${pretty(a.attHeader)}</pre></div>
+      <div><p class="lab p">issuer JWT payload — only <code>_sd</code> digests, no plaintext</p><pre>${pretty(a.attPayload)}</pre></div>
+    </div>
+    <p class="lab muted">selective disclosures — only “disclosed” rows are sent to this AS</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>${rows}</tbody></table>
+    <p class="lab muted">compact SD-JWT presentation — <code>issuer~disclosures~</code></p><pre class="muted">${a.attestation}</pre>
+    <p class="hint">Withheld claims live only as salted <code>_sd</code> digests inside the signed payload, so this AS never sees them — yet the attester’s signature still covers them. The proof’s <code>sd_hash</code> binds these exact disclosures.</p>
+  </div>`;
+}
+
 $('#buildBtn').onclick = async () => {
   artifacts = await buildArtifacts();
   const a = artifacts;
-  $('#artifacts').innerHTML =
-    artBlock('Client Attestation JWT — header OAuth-Client-Attestation', a.attestation, {header:a.attHeader,payload:a.attPayload})
-    + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
+  const attView = a.sdjwt
+    ? sdBlock(a)
+    : artBlock('Client Attestation JWT — header OAuth-Client-Attestation', a.attestation, {header:a.attHeader,payload:a.attPayload});
+  $('#artifacts').innerHTML = attView
+    + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)${a.sdjwt?' + sd_hash':''}`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
   setStatus('#s3s', mode()==='pop'?'attestation + PoP built':'attestation + DPoP built');
   highlightStage(3);
   $('#tokenBtn').disabled=false; openStep('#s4'); renderCurl(); renderRar();
@@ -471,6 +516,7 @@ $('#tokenBtn').onclick = async () => {
 };
 
 document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
+document.querySelectorAll('input[name=enc]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
 ['#rarRegion','#rarAction'].forEach(s=>{ const el=$(s); if(el) el.onchange=renderRar; });
 renderRar();
 
