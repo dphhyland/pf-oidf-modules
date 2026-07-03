@@ -78,6 +78,29 @@ discloses different subsets; PingFederate then sees only what was disclosed.
 The demo shows the *resolved AS entity* (anchor + trust marks) and, per claim, **why** it was
 disclosed or withheld — making the federation→disclosure link tangible.
 
+## AS-side enforcement (implemented)
+
+The other half of the negotiation: the AS **declares which claims it requires disclosed** and rejects a
+presentation that withholds them — so under-disclosure to an AS that needs the data fails cleanly rather
+than silently dropping it.
+
+- `ClientAttestationConfig.requiredDisclosedClaims` — top-level attestation claims (`workload`,
+  `authorization_details`) that must be present and non-empty in the (SD-JWT-reduced) attestation.
+- `ClientAttestationVerifier.enforceRequiredDisclosures` runs on the reconstructed disclosed claims and
+  throws `ClientAttestationException.INSUFFICIENT_DISCLOSURE` (→ token error) when a required claim is
+  withheld. `ClientAttestation.workload()` exposes the disclosed workload for the check.
+- Configured per-client via the `attestation_required_claims` extended property, or globally via the
+  `oidf.attestation.required.claims` system property (comma-separated). Empty ⇒ no requirement (default,
+  fully backward-compatible).
+
+On the demo's staging AS this is set to `workload`: the *External* and *Unknown* profiles (which withhold
+workload) are rejected with `insufficient_disclosure`; *Contoso EMEA* and *Partner CRM* (which disclose it)
+are accepted. Unit-tested in `ClientAttestationVerifierSdJwtTest#requiredWorkloadDisclosureEnforced`.
+
+> In production the required set is itself a function of the federation: an AS's *own* metadata (governed
+> by `metadata_policy`) or the trust marks it holds declare what it may require — closing the loop so both
+> the holder's disclosure and the AS's requirements are federation-driven.
+
 ## Caveats (honest)
 
 - **Trust bootstrapping cuts both ways** — the holder must validate the AS's chain to an anchor *it*

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.jose4j.jwk.JsonWebKey;
 import org.jose4j.jwk.PublicJsonWebKey;
 import org.jose4j.jwt.JwtClaims;
@@ -137,5 +138,39 @@ class ClientAttestationVerifierSdJwtTest {
 
         assertThrows(ClientAttestationException.class, () -> verifier(true, true)
                 .verify(plain, pop(OP_ISSUER, "p1", null), null, "POST", TOKEN_ENDPOINT, CLIENT_ID));
+    }
+
+    /**
+     * Federation-gated disclosure, AS side: when the AS requires {@code workload} disclosed, a presentation
+     * that withholds it is rejected ({@code insufficient_disclosure}); disclosing it is accepted.
+     */
+    @Test
+    void requiredWorkloadDisclosureEnforced() throws Exception {
+        String dSoftware = SdJwt.objectDisclosure("s3", "software_id", "pf-oidf-demo");
+        JwtClaims att = new JwtClaims();
+        att.setIssuer(ATTESTER);
+        att.setSubject(CLIENT_ID);
+        att.setIssuedAtToNow();
+        att.setExpirationTime(NumericDate.fromSeconds(NumericDate.now().getValue() + 600L));
+        att.setClaim("cnf", Map.of("jwk", TestJwts.publicParams(instanceKey)));
+        att.setClaim("_sd_alg", "sha-256");
+        att.setClaim("workload", Map.of("_sd", List.of(SdJwt.digest(dSoftware)))); // workload field, selectively disclosable
+        String issuer = TestJwts.sign(attesterKey, "ES256", "oauth-client-attestation+sd-jwt", att);
+
+        ClientAttestationConfig config = ClientAttestationConfig.builder()
+                .addAcceptedAudience(OP_ISSUER).addAcceptedAudience(TOKEN_ENDPOINT).expectedHtu(TOKEN_ENDPOINT)
+                .requiredDisclosedClaims(Set.of("workload")).build();
+        ClientAttestationVerifier v =
+                new ClientAttestationVerifier(resolver, config, new AttestationReplayCache(), new AttestationChallengeService());
+
+        String withheld = issuer + "~"; // no disclosures → workload reconstructs empty
+        ClientAttestationException ex = assertThrows(ClientAttestationException.class, () -> v.verify(
+                withheld, pop(OP_ISSUER, "w1", SdJwt.digest(withheld)), null, "POST", TOKEN_ENDPOINT, CLIENT_ID));
+        assertEquals(ClientAttestationException.INSUFFICIENT_DISCLOSURE, ex.error());
+
+        String disclosed = issuer + "~" + dSoftware + "~"; // present the workload field
+        ClientAttestationResult r = v.verify(
+                disclosed, pop(OP_ISSUER, "w2", SdJwt.digest(disclosed)), null, "POST", TOKEN_ENDPOINT, CLIENT_ID);
+        assertEquals(CLIENT_ID, r.clientId());
     }
 }

@@ -18,6 +18,8 @@ public final class ClientAttestationException extends Exception {
     public static final String INVALID_AUTHORIZATION_DETAILS = "invalid_authorization_details";
     /** The request is well-formed but exceeds what the attestation entitles the client to. */
     public static final String ACCESS_DENIED = "access_denied";
+    /** The presentation omits a claim this AS requires to be disclosed (federation-gated disclosure). */
+    public static final String INSUFFICIENT_DISCLOSURE = "insufficient_disclosure";
 
     private final String error;
 
@@ -57,5 +59,9 @@ public final class ClientAttestationException extends Exception {
 
     public static ClientAttestationException accessDenied(String message) {
         return new ClientAttestationException(ACCESS_DENIED, message);
+    }
+
+    public static ClientAttestationException insufficientDisclosure(String message) {
+        return new ClientAttestationException(INSUFFICIENT_DISCLOSURE, message);
     }
 }

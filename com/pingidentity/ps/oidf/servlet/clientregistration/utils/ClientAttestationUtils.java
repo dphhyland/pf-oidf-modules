@@ -241,7 +241,32 @@ public final class ClientAttestationUtils {
             }
             // "either" (or anything else) leaves the default: accept both encodings
         }
+        // Federation-gated disclosure (AS side): top-level claims this AS requires disclosed even under
+        // SD-JWT. Per-client via extproperties.attestation_required_claims, else a global default from the
+        // oidf.attestation.required.claims system property (comma-separated; e.g. "workload").
+        Set<String> requiredClaims = ClientAttestationUtils.setProp(inParameters, "extproperties.attestation_required_claims");
+        if (requiredClaims == null) {
+            requiredClaims = ClientAttestationUtils.systemPropertySet("oidf.attestation.required.claims");
+        }
+        if (requiredClaims != null) {
+            b.requiredDisclosedClaims(requiredClaims);
+        }
         return b.build();
+    }
+
+    private static Set<String> systemPropertySet(String property) {
+        String value = System.getProperty(property);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        LinkedHashSet<String> result = new LinkedHashSet<>();
+        for (String token : value.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                result.add(trimmed);
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 
     private static long trustChainEntryMaxAge(Map inParameters) {

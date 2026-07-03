@@ -115,6 +115,10 @@ public final class ClientAttestationVerifier {
                         "client_id request parameter does not match the attestation 'sub'");
             }
 
+            // The AS side of federation-gated disclosure: reject a presentation that withholds a claim
+            // this AS declares it requires (e.g. the workload attributes) even under selective disclosure.
+            this.enforceRequiredDisclosures(attestation);
+
             // Authenticate (attestation + proof of possession) first ...
             ClientAttestationResult authenticated = hasPop
                     ? this.verifyPopMode(attestation, popHeader)
@@ -136,6 +140,33 @@ public final class ClientAttestationVerifier {
         } catch (Exception e) {
             throw ClientAttestationException.invalidClient(
                     "Attestation-based client authentication failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Enforces the AS's federation-gated disclosure requirements: every claim named in
+     * {@link ClientAttestationConfig#requiredDisclosedClaims()} must be present and non-empty in the
+     * (possibly SD-JWT-reduced) attestation. Lets an AS declare, per its position in the federation,
+     * which claims it needs and reject a presentation that withholds them. Known groups:
+     * {@code workload} and {@code authorization_details}; an unrecognised name is treated as satisfied.
+     */
+    private void enforceRequiredDisclosures(ClientAttestation attestation) throws ClientAttestationException {
+        for (String claim : this.config.requiredDisclosedClaims()) {
+            boolean present;
+            switch (claim) {
+                case "workload":
+                    present = attestation.workload() != null && !attestation.workload().isEmpty();
+                    break;
+                case "authorization_details":
+                    present = attestation.authorizationDetails() != null && !attestation.authorizationDetails().isEmpty();
+                    break;
+                default:
+                    present = true;
+            }
+            if (!present) {
+                throw ClientAttestationException.insufficientDisclosure(
+                        "attestation does not disclose the AS-required claim '" + claim + "'");
+            }
         }
     }
 

@@ -33,6 +33,7 @@ public final class ClientAttestationConfig {
     private final boolean challengeRequired;
     private final boolean acceptSdJwt;
     private final boolean requireSdJwt;
+    private final Set<String> requiredDisclosedClaims;
 
     private ClientAttestationConfig(Builder b) {
         this.attestationAlgorithms = Set.copyOf(b.attestationAlgorithms);
@@ -47,6 +48,7 @@ public final class ClientAttestationConfig {
         this.challengeRequired = b.challengeRequired;
         this.acceptSdJwt = b.acceptSdJwt;
         this.requireSdJwt = b.requireSdJwt;
+        this.requiredDisclosedClaims = Set.copyOf(b.requiredDisclosedClaims);
     }
 
     public static Builder builder() {
@@ -103,6 +105,16 @@ public final class ClientAttestationConfig {
         return this.requireSdJwt;
     }
 
+    /**
+     * Top-level attestation claims this AS requires to be DISCLOSED (present and non-empty), even under
+     * SD-JWT selective disclosure — e.g. {@code "workload"} or {@code "authorization_details"}. Empty =
+     * no requirement (default). The AS side of federation-gated disclosure: the AS declares what it needs
+     * and rejects a presentation that withholds it.
+     */
+    public Set<String> requiredDisclosedClaims() {
+        return this.requiredDisclosedClaims;
+    }
+
     public static final class Builder {
         private Set<String> attestationAlgorithms = new LinkedHashSet<>(DEFAULT_ASYMMETRIC_ALGORITHMS);
         private Set<String> popAlgorithms = new LinkedHashSet<>(DEFAULT_ASYMMETRIC_ALGORITHMS);
@@ -116,6 +128,7 @@ public final class ClientAttestationConfig {
         private boolean challengeRequired;
         private boolean acceptSdJwt = true;
         private boolean requireSdJwt;
+        private Set<String> requiredDisclosedClaims = new LinkedHashSet<>();
 
         private Builder() {
         }
@@ -196,6 +209,13 @@ public final class ClientAttestationConfig {
             this.requireSdJwt = required;
             if (required) {
                 this.acceptSdJwt = true;
+            }
+            return this;
+        }
+
+        public Builder requiredDisclosedClaims(Set<String> claims) {
+            if (claims != null) {
+                this.requiredDisclosedClaims = new LinkedHashSet<>(claims);
             }
             return this;
         }

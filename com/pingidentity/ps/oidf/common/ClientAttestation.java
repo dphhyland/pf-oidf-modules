@@ -25,15 +25,17 @@ public final class ClientAttestation {
     private final long expEpochSeconds;
     private final long iatEpochSeconds;
     private final List<Map<String, Object>> authorizationDetails;
+    private final Map<String, Object> workload;
     private final String raw;
 
-    public ClientAttestation(String attesterIssuer, String clientId, Map<String, Object> cnfJwk, long expEpochSeconds, long iatEpochSeconds, List<Map<String, Object>> authorizationDetails, String raw) {
+    public ClientAttestation(String attesterIssuer, String clientId, Map<String, Object> cnfJwk, long expEpochSeconds, long iatEpochSeconds, List<Map<String, Object>> authorizationDetails, Map<String, Object> workload, String raw) {
         this.attesterIssuer = attesterIssuer;
         this.clientId = clientId;
         this.cnfJwk = cnfJwk;
         this.expEpochSeconds = expEpochSeconds;
         this.iatEpochSeconds = iatEpochSeconds;
         this.authorizationDetails = authorizationDetails;
+        this.workload = workload;
         this.raw = raw;
     }
 
@@ -52,7 +54,7 @@ public final class ClientAttestation {
         }
         long exp = claims.hasClaim("exp") ? claims.getExpirationTime().getValue() : 0L;
         long iat = claims.hasClaim("iat") ? claims.getIssuedAt().getValue() : 0L;
-        return new ClientAttestation(attester, clientId, jwk, exp, iat, authorizationDetails(claims), raw);
+        return new ClientAttestation(attester, clientId, jwk, exp, iat, authorizationDetails(claims), workload(claims), raw);
     }
 
     /**
@@ -91,6 +93,13 @@ public final class ClientAttestation {
         return out;
     }
 
+    /** The optional attester-asserted {@code workload} claim (workload attributes); empty if none/withheld. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> workload(JwtClaims claims) {
+        Object value = claims.getClaimValue("workload");
+        return value instanceof Map ? (Map<String, Object>) value : Map.of();
+    }
+
     public String attesterIssuer() {
         return this.attesterIssuer;
     }
@@ -114,6 +123,11 @@ public final class ClientAttestation {
     /** The attester-asserted RFC 9396 entitlement ({@code authorization_details}); empty if none. */
     public List<Map<String, Object>> authorizationDetails() {
         return this.authorizationDetails;
+    }
+
+    /** The attester-asserted {@code workload} attributes actually disclosed to this AS; empty if none/withheld. */
+    public Map<String, Object> workload() {
+        return this.workload;
     }
 
     public String raw() {

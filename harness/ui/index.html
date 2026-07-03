@@ -494,6 +494,15 @@ function asEntityBlock(a){
       <tr><td class="muted" style="padding:2px 10px 2px 0">trust marks</td><td>${marks}</td></tr>
     </table>
     <p class="hint" style="margin-top:8px"><b>Disclosure policy →</b> ${pol.why}</p>
+    ${(() => {
+      // The AS side of the negotiation: this live PingFederate declares it REQUIRES the workload
+      // attributes disclosed (oidf.attestation.required.claims=workload). A presentation that withholds
+      // them is rejected with insufficient_disclosure (HTTP 400).
+      const workloadDisclosed = pol.all || (pol.workload && pol.workload.size > 0);
+      return `<p class="hint" style="margin-top:4px"><b>This AS requires disclosed:</b> <code>workload</code> — ${
+        workloadDisclosed ? '<span class="pill ok">satisfied → accepted</span>'
+                          : '<span class="pill err">withheld → insufficient_disclosure (400)</span>'}</p>`;
+    })()}
   </div>`;
 }
 
