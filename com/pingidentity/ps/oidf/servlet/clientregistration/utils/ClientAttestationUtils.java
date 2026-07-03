@@ -309,8 +309,18 @@ public final class ClientAttestationUtils {
         if (!inParameters.containsKey(key)) {
             return null;
         }
-        String value = String.valueOf(inParameters.get(key));
-        return value == null || value.isBlank() ? null : value.trim();
+        // PF's issuance-criteria context maps the extended-property key even when the client has no value:
+        // unwrap an AttributeValue, and treat Java null / the literal "null" (from String.valueOf(null)) /
+        // blank as "not set" so callers fall back to defaults instead of a bogus "null" token.
+        Object raw = inParameters.get(key);
+        if (raw instanceof AttributeValue) {
+            raw = ((AttributeValue) raw).getValue();
+        }
+        if (raw == null) {
+            return null;
+        }
+        String value = String.valueOf(raw).trim();
+        return value.isEmpty() || "null".equalsIgnoreCase(value) ? null : value;
     }
 
     private static Long longProp(Map inParameters, String key) {
