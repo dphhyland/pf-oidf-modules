@@ -200,6 +200,17 @@
       The attestation also carries a <code>workload</code> claim — attester-asserted attributes about the client workload
       (<code>software_id</code>, <code>software_version</code>, <code>environment</code>, <code>instance_id</code>,
       <code>runtime</code>, <code>host</code>, <code>git_commit</code>).</p>
+      <div class="row" id="asProfileRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
+        <label class="opt" style="gap:8px">Target AS — federation profile:
+          <select id="asProfile" style="padding:4px 6px">
+            <option value="home-emea">Contoso EMEA AS — home federation (region:EMEA + workload-inspection)</option>
+            <option value="partner-crm">Partner CRM AS — same anchor, no workload-inspection</option>
+            <option value="external">External AS — different trust anchor</option>
+            <option value="unknown">Unknown AS — no resolvable chain</option>
+          </select>
+        </label>
+        <span class="muted" style="font-size:12px">The holder resolves the AS's trust chain and discloses only what its federation standing entitles it to.</span>
+      </div>
       <div class="row"><button id="buildBtn" disabled>Build artifacts</button></div>
       <div id="artifacts"></div>
     </div>
@@ -240,6 +251,7 @@
       <pre id="curlOut" class="muted">—</pre>
       <p class="lab accent">PingFederate response</p>
       <pre id="tokOut" class="muted">—</pre>
+      <div id="tokDecoded"></div>
     </div>
   </section>
 </main>
@@ -295,6 +307,36 @@ function authorizeRar(requested, entitled){
       reason:`type '${req.type}' exceeds the attested entitlement`};
   }
   return {ok:true};
+}
+
+// ── Federation-gated disclosure ──────────────────────────────────────────────
+// Mock AS federation profiles — stand in for resolving the target AS as a federation
+// entity (AS/.well-known/openid-federation → trust chain → anchor + trust marks).
+// In production these come from TrustChainValidator(AS entity), not a hard-coded table.
+const HOME_ANCHOR = 'https://anchor.acme-federation.example';
+const AS_PROFILES = {
+  'home-emea':   {label:'Contoso EMEA AS (home federation)',      resolvable:true,  anchor:HOME_ANCHOR,
+                  trust_marks:['acme:region:EMEA','acme:workload-inspection']},
+  'partner-crm': {label:'Partner CRM AS (same anchor)',           resolvable:true,  anchor:HOME_ANCHOR,
+                  trust_marks:['acme:region:EMEA']},
+  'external':    {label:'External AS (different trust anchor)',   resolvable:true,  anchor:'https://anchor.other-federation.example',
+                  trust_marks:[]},
+  'unknown':     {label:'Unknown AS (no resolvable chain)',       resolvable:false, anchor:null,
+                  trust_marks:[]}
+};
+function asProfile(){ const el=document.querySelector('#asProfile'); return AS_PROFILES[el?el.value:'home-emea']; }
+// Holder-side disclosure policy keyed on the AS's provable federation standing.
+// Returns which workload fields + whether the entitlement are revealed, and the rationale.
+function policyReveal(p){
+  const low = new Set(['software_id','software_version','environment']);   // low-sensitivity workload
+  if(!p.resolvable) return {entitlement:false, all:false, workload:new Set(),
+    why:"AS chain does not resolve to a trusted anchor → minimal disclosure (default deny)."};
+  if(p.trust_marks.includes('acme:workload-inspection')) return {entitlement:true, all:true, workload:new Set(),
+    why:"AS holds trust mark <code>workload-inspection</code> → full workload + entitlement disclosed."};
+  if(p.anchor===HOME_ANCHOR) return {entitlement:true, all:false, workload:low,
+    why:"Same trust anchor, no <code>workload-inspection</code> mark → entitlement + low-sensitivity workload only."};
+  return {entitlement:true, all:false, workload:new Set(),
+    why:"Resolvable but different trust anchor → entitlement only, workload withheld (cross-domain minimization)."};
 }
 
 // ── diagram stage highlighting ──
@@ -388,19 +430,24 @@ async function buildArtifacts(){
   const isSd = encoding()==='sdjwt';
   let attestation, attHeader, attPayload, sdjwt=null, sdHash=null;
   if(isSd){
-    // Make each workload field and the entitlement entry a selective disclosure; reveal only a subset.
-    const REVEAL = new Set(['software_id','software_version','environment']);
+    // Disclosure is chosen by the HOLDER, gated on the target AS's federation standing
+    // (resolved trust anchor + trust marks). Each workload field + the entitlement entry
+    // is a selective disclosure; the policy decides which are presented to THIS AS.
+    const prof = asProfile();
+    const pol = policyReveal(prof);
+    const revealField = k => pol.all || pol.workload.has(k);
     const wlDiscs = [];
-    for(const [k,v] of Object.entries(buildWorkload())){ wlDiscs.push({...(await mkObjDisc(k,v)), revealed:REVEAL.has(k)}); }
-    const entDisc = {...(await mkArrDisc(ENTITLEMENT[0])), name:'authorization_details[0]', revealed:true};
+    for(const [k,v] of Object.entries(buildWorkload())){ wlDiscs.push({...(await mkObjDisc(k,v)), revealed:revealField(k)}); }
+    const entDisc = {...(await mkArrDisc(ENTITLEMENT[0])), name:'authorization_details[0]', revealed:pol.entitlement};
     attHeader = {alg:'ES256', typ:'oauth-client-attestation+sd-jwt', kid:'mock-attester-1'};
     attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600, cnf:{jwk:cnfJwk},
       _sd_alg:'sha-256', authorization_details:[{'...':entDisc.digest}], workload:{_sd:wlDiscs.map(x=>x.digest)}};
     const issuerJwt = await jws(attester, attHeader, attPayload);
-    const revealed = [entDisc, ...wlDiscs.filter(x=>x.revealed)];
-    attestation = issuerJwt + '~' + revealed.map(x=>x.d).join('~') + '~';   // issuer~disclosures~ (KB-JWT is the PoP)
+    const revealed = [...(pol.entitlement?[entDisc]:[]), ...wlDiscs.filter(x=>x.revealed)];
+    // issuer~disc1~…~discN~ (KB-JWT is the PoP). Zero disclosures → canonical "issuer~", not "issuer~~".
+    attestation = issuerJwt + '~' + revealed.map(x=>x.d).join('~') + (revealed.length?'~':'');
     sdHash = await sha256b64u(attestation);
-    sdjwt = {disclosures:[entDisc, ...wlDiscs]};
+    sdjwt = {disclosures:[entDisc, ...wlDiscs], asProfile:prof, policy:pol};
   } else {
     attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
     attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
@@ -434,13 +481,29 @@ function artBlock(title, jwt, dec){
     <p class="lab muted">compact JWT</p><pre class="muted">${jwt}</pre></div>`;
 }
 
+// Panel showing the AS resolved as a federation entity + the disclosure policy decision.
+function asEntityBlock(a){
+  const prof=a.sdjwt.asProfile, pol=a.sdjwt.policy; if(!prof) return '';
+  const marks = prof.trust_marks.length ? prof.trust_marks.map(m=>`<code>${m}</code>`).join(' ') : '<span class="muted">none</span>';
+  const anchor = prof.resolvable ? `<code>${prof.anchor}</code>` : '<span class="pill err">unresolvable</span>';
+  return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+    <p class="lab accent">Target AS — resolved as a federation entity <span class="muted">(trust chain)</span></p>
+    <table style="font-size:12px;border-collapse:collapse">
+      <tr><td class="muted" style="padding:2px 10px 2px 0">profile</td><td>${prof.label}</td></tr>
+      <tr><td class="muted" style="padding:2px 10px 2px 0">trust anchor</td><td>${anchor}</td></tr>
+      <tr><td class="muted" style="padding:2px 10px 2px 0">trust marks</td><td>${marks}</td></tr>
+    </table>
+    <p class="hint" style="margin-top:8px"><b>Disclosure policy →</b> ${pol.why}</p>
+  </div>`;
+}
+
 function sdBlock(a){
   const rows = a.sdjwt.disclosures.map(d=>`<tr>
       <td style="padding:2px 8px">${d.revealed?'<span class="pill ok">disclosed</span>':'<span class="pill warn">withheld</span>'}</td>
       <td class="kv" style="padding:2px 8px"><b>${d.name}</b></td>
       <td class="muted" style="padding:2px 8px">${d.revealed?('= '+JSON.stringify(d.value)):'hash only — not sent to this AS'}</td>
     </tr>`).join('');
-  return `<div style="margin:14px 0">
+  return asEntityBlock(a) + `<div style="margin:14px 0">
     <p class="lab accent">Client Attestation — SD-JWT (header OAuth-Client-Attestation)</p>
     <div class="jwt">
       <div><p class="lab h">issuer JWT header</p><pre>${pretty(a.attHeader)}</pre></div>
@@ -497,6 +560,26 @@ function renderCurl(){
   $('#curlOut').textContent = lines.join('\n'); $('#curlOut').className='';
 }
 
+// Decode any JWT the token endpoint returns (access_token / id_token) for an inline header+payload view.
+function tryDecodeJwt(s){
+  if(typeof s!=='string') return null;
+  const parts=s.split('.');
+  if(parts.length<2 || parts.length>5) return null;
+  const seg=x=>{ let b=x.replace(/-/g,'+').replace(/_/g,'/'); b+='='.repeat((4-b.length%4)%4);
+    const bytes=Uint8Array.from(atob(b), c=>c.charCodeAt(0)); return JSON.parse(new TextDecoder().decode(bytes)); };
+  try{ return {header:seg(parts[0]), payload:seg(parts[1])}; }catch(e){ return null; }
+}
+function decodedTokens(body){
+  if(!body || typeof body!=='object') return '';
+  const blocks=[];
+  for(const f of ['access_token','id_token']){
+    const v=body[f]; if(typeof v!=='string') continue;
+    const dec=tryDecodeJwt(v);
+    blocks.push(dec ? artBlock(`${f} — decoded JWT`, v, dec)
+      : `<div style="margin:10px 0"><p class="lab accent">${f}</p><p class="hint">opaque reference token (not a JWT) — nothing to decode.</p></div>`);
+  }
+  return blocks.length ? `<p class="lab accent" style="margin-top:14px">Decoded tokens</p>${blocks.join('')}` : '';
+}
 $('#tokenBtn').onclick = async () => {
   const a = artifacts; if(!a) return;
   highlightStage(4);
@@ -512,12 +595,17 @@ $('#tokenBtn').onclick = async () => {
   $('#tokOut').innerHTML = `<span class="pill ${ok?'ok':'err'}">HTTP ${r.status}</span>\n`
     + (typeof body==='string'? body : pretty(body));
   $('#tokOut').className='';
+  $('#tokDecoded').innerHTML = decodedTokens(body);
   setStatus('#s4s', ok?'token issued ✓':'token endpoint responded', ok?'':'');
 };
 
+// Show the AS federation-profile selector only for SD-JWT (disclosure gating applies there).
+function syncEncUI(){ const row=$('#asProfileRow'); if(row) row.style.display = (encoding()==='sdjwt') ? 'flex' : 'none'; }
 document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
-document.querySelectorAll('input[name=enc]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
+document.querySelectorAll('input[name=enc]').forEach(r=>r.onchange=()=>{ syncEncUI(); if(artifacts) $('#buildBtn').click(); });
+{ const el=$('#asProfile'); if(el) el.onchange=()=>{ if(artifacts) $('#buildBtn').click(); }; }
 ['#rarRegion','#rarAction'].forEach(s=>{ const el=$(s); if(el) el.onchange=renderRar; });
+syncEncUI();
 renderRar();
 
 // click a step header to re-highlight its stage in the diagram
