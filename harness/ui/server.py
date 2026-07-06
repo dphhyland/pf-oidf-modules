@@ -17,8 +17,10 @@ Usage:
 
 Then open http://localhost:8800
 """
+import base64
 import json
 import os
+import re
 import socket
 import ssl
 import subprocess
@@ -46,6 +48,27 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "demo-secret-123")
 # Workload attributes the demo UI advertises in its attestation's "workload" claim.
 # git_commit: $OIDF_GIT_COMMIT (Railway sets no git), else `git rev-parse`, else "unknown".
 SOFTWARE_VERSION = os.environ.get("SOFTWARE_VERSION", "0.0.1-SNAPSHOT")
+# Live federation the demo resolves the target AS against (Lighthouse anchor + fedhost entities).
+# Prefer an explicit override, else Railway's injected service URL (bare host), else a default.
+def _fed_url(explicit_env, railway_ref_env, default):
+    v = os.environ.get(explicit_env)
+    if v:
+        return v.rstrip("/")
+    host = os.environ.get(railway_ref_env)
+    if host:
+        return ("https://" + host).rstrip("/")
+    return default
+
+
+LIGHTHOUSE = _fed_url("LIGHTHOUSE", "RAILWAY_SERVICE_LIGHTHOUSE_URL", "https://lighthouse-staging-e017.up.railway.app")
+FEDHOST = _fed_url("FEDHOST", "RAILWAY_SERVICE_FEDHOST_URL", "https://fedhost-staging.up.railway.app")
+# The step-3 "target AS federation profile" options map to real federation entities.
+AS_PROFILE_SUB = {
+    "home-emea":   FEDHOST + "/e/as-emea",      # under Lighthouse + workload-inspection mark
+    "partner-crm": FEDHOST + "/e/as-partner",   # under Lighthouse, no mark
+    "external":    FEDHOST + "/e/as-external",   # under a different anchor
+    "unknown":     FEDHOST + "/e/as-unknown",    # no entity configuration (404)
+}
 
 
 def _git_commit():
@@ -84,12 +107,244 @@ def pf_post(url, data=None, headers=None):
         return 0, f"proxy error: {e}", {}
 
 
+def http_get(url):
+    """GET, returning (status, body_text)."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, method="GET"),
+                                    context=SSL_CTX, timeout=15) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        return 0, f"error: {e}"
+
+
+def _jwt_payload(jwt):
+    seg = jwt.split(".")[1]
+    seg += "=" * (-len(seg) % 4)
+    return json.loads(base64.urlsafe_b64decode(seg))
+
+
+def resolve_as(profile):
+    """Resolve the target AS as a federation entity, live. Reads its entity configuration
+    (trust marks + authority hints) and runs a Lighthouse /resolve to test whether it chains
+    to our home anchor — what a holder-side TrustChainValidator would do before disclosing."""
+    sub = AS_PROFILE_SUB.get(profile)
+    if not sub:
+        return {"error": "unknown profile", "resolvable": False}
+    cfg_status, cfg_body = http_get(sub + "/.well-known/openid-federation")
+    if cfg_status != 200:
+        return {"sub": sub, "resolvable": False, "home": False, "anchor": None,
+                "trust_marks": [], "reason": "no entity configuration (HTTP %s)" % cfg_status}
+    try:
+        cfg = _jwt_payload(cfg_body)
+    except Exception as e:  # noqa: BLE001
+        return {"sub": sub, "resolvable": False, "home": False, "anchor": None,
+                "trust_marks": [], "reason": "unparseable entity configuration: %s" % e}
+    marks = [m.get("id") for m in cfg.get("trust_marks", []) if isinstance(m, dict)]
+    hints = cfg.get("authority_hints", [])
+    org = cfg.get("metadata", {}).get("federation_entity", {}).get("organization_name", sub)
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
+    res_status, res_body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    home = res_status == 200
+    chain_len = None
+    if home:
+        try:
+            chain_len = len(_jwt_payload(res_body).get("trust_chain", []))
+        except Exception:  # noqa: BLE001
+            pass
+    return {"sub": sub, "resolvable": True, "home": home,
+            "anchor": LIGHTHOUSE if home else (hints[0] if hints else None),
+            "trust_marks": marks, "org": org, "chain_len": chain_len}
+
+
+# AS-side federation client authentication: the demo "clients" map to real RP entities.
+CLIENT_SUB = {
+    "rp-sales":     FEDHOST + "/e/rp-sales",      # member, active, automatic, scoped
+    "rp-legacy":    FEDHOST + "/e/rp-legacy",     # member, active, but explicit-only -> policy reject
+    "rp-suspended": FEDHOST + "/e/rp-suspended",  # config exists, not enrolled -> status reject
+}
+
+
+def authorize_client(client_key, requested_scopes):
+    """What PingFederate does at client authentication: resolve the CLIENT entity via the trust
+    controller and authenticate only if it's a federation member, within policy, status-active,
+    and the requested scopes are within the scopes registered to its entity metadata."""
+    sub = CLIENT_SUB.get(client_key, client_key)
+    requested = [s for s in requested_scopes if s]
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
+    res_status, res_body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    checks = {"member": False, "status_active": False, "within_policy": False, "scope_ok": False}
+    if res_status != 200:
+        cfg_status, _ = http_get(sub + "/.well-known/openid-federation")
+        exists = cfg_status == 200
+        return {"authenticated": False, "sub": sub, "checks": checks,
+                "requested_scopes": requested,
+                "reason": ("entity configuration exists but is not enrolled in the federation "
+                           "(suspended/revoked) — no resolvable chain to the trust anchor"
+                           if exists else
+                           "unknown entity — no federation entity configuration")}
+    # PF verifies the resolve-response is signed by the anchor before trusting it: fetch the
+    # anchor's published keys (GET /.well-known/openid-federation) and confirm the response's
+    # signing key is one of them. (jose4j does the full ES512 verify in PF; here we match the kid.)
+    acfg_status, acfg_body = http_get(LIGHTHOUSE + "/.well-known/openid-federation")
+    anchor_kids = []
+    if acfg_status == 200:
+        try:
+            anchor_kids = [k.get("kid") for k in _jwt_payload(acfg_body).get("jwks", {}).get("keys", [])]
+        except Exception:  # noqa: BLE001
+            pass
+    try:
+        hseg = res_body.split(".")[0]
+        hseg += "=" * (-len(hseg) % 4)
+        rr_kid = json.loads(base64.urlsafe_b64decode(hseg)).get("kid")
+    except Exception:  # noqa: BLE001
+        rr_kid = None
+    anchor_signed = rr_kid is not None and rr_kid in anchor_kids
+    checks["member"] = anchor_signed        # membership requires an anchor-signed resolve-response
+    checks["status_active"] = anchor_signed  # resolvable subordinate + anchor-signed == active
+    if not anchor_signed:
+        return {"authenticated": False, "sub": sub, "checks": checks, "requested_scopes": requested,
+                "anchor_signed": False,
+                "reason": "resolve-response is not signed by the trust anchor — untrusted resolution"}
+    try:
+        rr = _jwt_payload(res_body)
+    except Exception as e:  # noqa: BLE001
+        return {"authenticated": False, "sub": sub, "checks": checks,
+                "requested_scopes": requested, "reason": "unparseable resolve response: %s" % e}
+    md = rr.get("metadata", {})
+    oc = md.get("oauth_client")
+    org = md.get("federation_entity", {}).get("organization_name", sub)
+    chain_len = len(rr.get("trust_chain", []))
+    if not oc:
+        return {"authenticated": False, "sub": sub, "org": org, "checks": checks,
+                "requested_scopes": requested, "chain_len": chain_len,
+                "reason": "resolved entity has no oauth_client metadata"}
+    reg_types = oc.get("client_registration_types", [])
+    checks["within_policy"] = "automatic" in reg_types
+    registered = set((oc.get("scope") or "").split())
+    checks["scope_ok"] = set(requested).issubset(registered)
+    authenticated = checks["within_policy"] and checks["scope_ok"]
+    if authenticated:
+        reason = "authenticated — federation member, within policy, requested scopes registered"
+    elif not checks["within_policy"]:
+        reason = ("within-policy check failed: automatic client registration not permitted "
+                  "(client_registration_types=%s)" % reg_types)
+    else:
+        reason = "requested scope exceeds the scopes registered to the entity: %s" % sorted(set(requested) - registered)
+    return {"authenticated": authenticated, "sub": sub, "org": org, "checks": checks,
+            "reg_types": reg_types, "chain_len": chain_len,
+            "registered_scopes": sorted(registered), "requested_scopes": requested,
+            "granted_scopes": sorted(set(requested) & registered), "reason": reason}
+
+
+# ── Day-0 bootstrap: enroll a browser-minted entity into the live federation ──
+# The browser generates the ENTITY key (WebCrypto), self-signs the entity configuration
+# and hands us the public JWK + signed JWT. This server then (a) hosts the entity
+# configuration at /e/<slug>/.well-known/openid-federation (the demo UI's public URL is
+# the entity_id) and (b) registers the public key as a subordinate record in the trust
+# controller (Lighthouse admin API). The private key never leaves the browser.
+ENROLLED = {}  # slug -> {"jwt": entity_config_jwt, "entity_id": sub}
+ADMIN_SUBS = LIGHTHOUSE + "/api/v1/admin/subordinates"
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
+
+
+def http_json(method, url, obj=None):
+    """JSON request, returning (status, body_text)."""
+    data = json.dumps(obj).encode() if obj is not None else None
+    req = urllib.request.Request(url, data=data, method=method)
+    if data is not None:
+        req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req, context=SSL_CTX, timeout=15) as r:
+            return r.status, r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, e.read().decode("utf-8", "replace")
+    except Exception as e:  # noqa: BLE001
+        return 0, f"error: {e}"
+
+
+def resolve_sub(sub):
+    """Ask the trust controller to resolve an entity — used for the before/after check."""
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
+    status, body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    out = {"sub": sub, "resolved": status == 200, "status": status}
+    if status == 200:
+        out["resolve_jwt"] = body
+        try:
+            out["chain_len"] = len(_jwt_payload(body).get("trust_chain", []))
+        except Exception:  # noqa: BLE001
+            pass
+    else:
+        out["body"] = body[:300]
+    return out
+
+
+def remove_controller_record(entity_id):
+    """DELETE any subordinate record(s) for entity_id. Returns True if one was removed."""
+    status, body = http_get(ADMIN_SUBS)
+    if status != 200:
+        return False
+    try:
+        subs = json.loads(body)
+    except Exception:  # noqa: BLE001
+        return False
+    removed = False
+    for s in subs:
+        if s.get("entity_id") == entity_id:
+            st, _ = http_json("DELETE", "%s/%s" % (ADMIN_SUBS, s.get("id")))
+            removed = removed or st in (200, 202, 204)
+    return removed
+
+
+def enroll_entity(payload):
+    slug = (payload.get("slug") or "").strip().lower()
+    jwt = payload.get("entity_config_jwt") or ""
+    jwk = payload.get("jwk") or {}
+    if not SLUG_RE.match(slug):
+        return {"error": "invalid slug (lowercase letters, digits, hyphens)"}
+    try:
+        cfg = _jwt_payload(jwt)
+    except Exception as e:  # noqa: BLE001
+        return {"error": "unparseable entity configuration: %s" % e}
+    sub = cfg.get("sub")
+    if not sub or cfg.get("iss") != sub or not sub.endswith("/e/" + slug):
+        return {"error": "entity configuration must be self-issued (iss == sub == …/e/%s)" % slug}
+    keys = cfg.get("jwks", {}).get("keys", [])
+    if not any(k.get("x") == jwk.get("x") and k.get("y") == jwk.get("y") for k in keys):
+        return {"error": "the registered public JWK is not in the entity configuration's jwks"}
+    # Host the entity configuration (this is what makes `sub` a live federation entity).
+    ENROLLED[slug] = {"jwt": jwt, "entity_id": sub}
+    # Write the controller record: replace any stale one, then register {entity_id, jwks}.
+    replaced = remove_controller_record(sub)
+    reg_status, reg_body = http_json("POST", ADMIN_SUBS,
+                                     {"entity_id": sub, "jwks": {"keys": [jwk]}})
+    # The anchor-signed subordinate statement IS "the record": fetch it back to show it.
+    fq = urllib.parse.urlencode({"sub": sub})
+    fetch_status, fetch_body = http_get(LIGHTHOUSE + "/fetch?" + fq)
+    return {"entity_id": sub, "registered": reg_status in (200, 201),
+            "replaced_stale_record": replaced, "admin_status": reg_status,
+            "admin_body": None if reg_status in (200, 201) else reg_body[:400],
+            "subordinate_statement": fetch_body if fetch_status == 200 else None,
+            "fetch_status": fetch_status}
+
+
+def deregister_entity(payload):
+    """Suspend: remove the controller record but KEEP serving the entity configuration —
+    the entity still exists, the federation just no longer vouches for it."""
+    entity_id = payload.get("entity_id") or ""
+    if not any(e["entity_id"] == entity_id for e in ENROLLED.values()):
+        return {"error": "not an entity enrolled by this demo"}
+    return {"entity_id": entity_id, "deregistered": remove_controller_record(entity_id)}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, status, body, ctype="application/json"):
         b = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.end_headers()
         self.wfile.write(b)
 
@@ -109,7 +364,28 @@ class Handler(BaseHTTPRequestHandler):
                 "client_id": CLIENT_ID,
                 "git_commit": GIT_COMMIT,
                 "software_version": SOFTWARE_VERSION,
+                "lighthouse": LIGHTHOUSE,
             }))
+        elif self.path.startswith("/api/resolvesub"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            sub = (q.get("sub") or [""])[0]
+            self._send(200, json.dumps(resolve_sub(sub)))
+        elif self.path.startswith("/api/resolve"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            profile = (q.get("profile") or ["home-emea"])[0]
+            self._send(200, json.dumps(resolve_as(profile)))
+        elif self.path.startswith("/e/"):
+            m = re.match(r"^/e/([a-z0-9-]+)/\.well-known/openid-federation$", self.path)
+            e = ENROLLED.get(m.group(1)) if m else None
+            if e:
+                self._send(200, e["jwt"], "application/entity-statement+jwt")
+            else:
+                self._send(404, json.dumps({"error": "unknown entity"}))
+        elif self.path.startswith("/api/authorize"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            client = (q.get("client") or ["rp-sales"])[0]
+            scopes = (q.get("scope") or [""])[0].split()
+            self._send(200, json.dumps(authorize_client(client, scopes)))
         else:
             self._send(404, json.dumps({"error": "not found"}))
 
@@ -136,6 +412,18 @@ class Handler(BaseHTTPRequestHandler):
             headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
             status, body, hdrs = pf_post(TOKEN_ENDPOINT, data=data, headers=headers)
             self._send(200, json.dumps({"status": status, "body": body}))
+        elif self.path == "/api/enroll":
+            try:
+                payload = json.loads(raw or b"{}")
+            except Exception:  # noqa: BLE001
+                payload = {}
+            self._send(200, json.dumps(enroll_entity(payload)))
+        elif self.path == "/api/deregister":
+            try:
+                payload = json.loads(raw or b"{}")
+            except Exception:  # noqa: BLE001
+                payload = {}
+            self._send(200, json.dumps(deregister_entity(payload)))
         else:
             self._send(404, json.dumps({"error": "not found"}))
 

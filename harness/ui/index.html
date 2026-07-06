@@ -87,7 +87,7 @@
 
   <!-- component interaction diagram -->
   <section class="diagram">
-    <svg viewBox="0 0 1000 408" role="img" aria-label="Component interaction diagram">
+    <svg viewBox="0 0 1000 430" role="img" aria-label="Component interaction diagram">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/>
@@ -95,73 +95,104 @@
       </defs>
 
       <!-- zones -->
-      <rect class="zone" x="16" y="44" width="372" height="350" rx="12"/>
-      <rect class="zone" x="612" y="44" width="372" height="350" rx="12"/>
-      <text class="zlabel" x="202" y="34">YOUR BROWSER — THE CLIENT APP</text>
-      <text class="zlabel" x="798" y="34">PINGFEDERATE RUNTIME (RAILWAY)</text>
+      <rect class="zone" x="16" y="52" width="356" height="360" rx="12"/>
+      <rect class="zone" x="628" y="52" width="356" height="360" rx="12"/>
+      <text class="zlabel" x="194" y="42">YOUR BROWSER — THE HOLDER</text>
+      <text class="zlabel" x="806" y="42">PINGFEDERATE — THE AS (verifier)</text>
 
       <!-- edges (drawn first, under nodes) -->
+      <!-- stage 2 -->
       <g class="edge" data-on="2">
-        <path class="flow" d="M388,108 L632,108" marker-end="url(#ah)"/>
-        <text class="lbl" x="510" y="100">POST (no body)</text>
+        <path class="flow" d="M372,110 L628,110" marker-end="url(#ah)"/>
+        <text class="lbl" x="500" y="102">POST /attestation-challenge</text>
       </g>
       <g class="edge" data-on="2">
-        <path class="flow" d="M632,130 L390,130" marker-end="url(#ah)"/>
-        <text class="lbl" x="510" y="148">one-time challenge</text>
+        <path class="flow" d="M628,132 L372,132" marker-end="url(#ah)"/>
+        <text class="lbl" x="500" y="124">one-time challenge</text>
+      </g>
+      <!-- stage 3: federation-gated disclosure -->
+      <g class="edge" data-on="3">
+        <path class="flow" d="M372,188 L402,188" marker-end="url(#ah)"/>
+        <text class="lbl" x="500" y="140">holder resolves target AS standing</text>
+      </g>
+      <g class="edge" data-on="3">
+        <path class="flow" d="M410,242 L350,260" marker-end="url(#ah)"/>
+      </g>
+      <g class="edge" data-on="3">
+        <path class="flow" d="M194,290 L194,328" marker-end="url(#ah)"/>
+        <text class="lbl" x="256" y="312">reveal entitled</text>
+      </g>
+      <!-- stage 4 -->
+      <g class="edge" data-on="4">
+        <path class="flow" d="M350,350 L650,186" marker-end="url(#ah)"/>
+        <text class="lbl" x="512" y="300">attestation + PoP / DPoP + disclosures</text>
       </g>
       <g class="edge" data-on="4">
-        <path class="flow" d="M388,300 L632,182" marker-end="url(#ah)"/>
-        <text class="lbl" x="498" y="232">attestation + PoP / DPoP headers</text>
+        <path class="flow" d="M806,210 L806,226" marker-end="url(#ah)"/>
       </g>
       <g class="edge" data-on="4">
-        <path class="flow" d="M632,200 L390,332" marker-end="url(#ah)"/>
-        <text class="lbl" x="498" y="356">access_token / error</text>
+        <path class="flow" d="M806,278 L806,294" marker-end="url(#ah)"/>
       </g>
       <g class="edge" data-on="4">
-        <path d="M798,220 L798,232" marker-end="url(#ah)"/>
+        <path class="flow" d="M650,202 L350,368" marker-end="url(#ah)"/>
+        <text class="lbl" x="500" y="388">access_token / error / insufficient_disclosure</text>
       </g>
+      <!-- verifier resolves the attester's trust chain via the trust controller -->
       <g class="edge" data-on="4">
-        <path class="dash" d="M712,288 L712,300" marker-end="url(#ah)"/>
-        <text class="lbl" x="700" y="296" text-anchor="end">verify sig</text>
+        <path class="flow dash" d="M702,296 L566,240" marker-end="url(#ah)"/>
+        <text class="lbl" x="556" y="262">authorize · status + scopes</text>
       </g>
 
-      <!-- browser nodes -->
+      <!-- browser (holder) nodes -->
       <g class="node" data-on="1,3">
-        <rect x="40" y="86" width="324" height="72" rx="8"/>
-        <text class="t1" x="202" y="116">Client Attester</text>
-        <text class="t2" x="202" y="134">mock key — public key pre-trusted by PF</text>
+        <rect x="40" y="88" width="308" height="58" rx="8"/>
+        <text class="t1" x="194" y="113">Client Attester</text>
+        <text class="t2" x="194" y="131">mock key — pre-trusted by PF</text>
       </g>
       <g class="node" data-on="1,3">
-        <rect x="40" y="176" width="324" height="72" rx="8"/>
-        <text class="t1" x="202" y="206">Client instance key</text>
-        <text class="t2" x="202" y="224">EC P-256 · public JWK → cnf</text>
+        <rect x="40" y="158" width="308" height="58" rx="8"/>
+        <text class="t1" x="194" y="183">Client instance key</text>
+        <text class="t2" x="194" y="201">EC P-256 · public JWK → cnf</text>
+      </g>
+      <g class="node" data-on="3">
+        <rect x="40" y="232" width="308" height="58" rx="8"/>
+        <text class="t1" x="194" y="257">Federation-gated disclosure</text>
+        <text class="t2" x="194" y="275">SD-JWT · reveal only entitled claims</text>
       </g>
       <g class="node" data-on="3,4">
-        <rect x="40" y="270" width="324" height="78" rx="8"/>
-        <text class="t1" x="202" y="302">Attestation JWT  +  PoP / DPoP proof</text>
-        <text class="t2" x="202" y="320">signed in your browser (WebCrypto)</text>
+        <rect x="40" y="328" width="308" height="58" rx="8"/>
+        <text class="t1" x="194" y="353">SD-JWT  +  PoP / DPoP proof</text>
+        <text class="t2" x="194" y="371">signed in browser · sd_hash binds it</text>
       </g>
 
-      <!-- PingFederate nodes -->
+      <!-- trust controller (Lighthouse): resolved by the holder (target AS, stage 3) and the verifier (attester, stage 4) -->
+      <g class="node" data-on="3,4">
+        <rect x="402" y="150" width="196" height="92" rx="8"/>
+        <text class="t1" x="500" y="176">Trust controller</text>
+        <text class="t2" x="500" y="196">Lighthouse · authorization</text>
+        <text class="t2" x="500" y="214">status · entitlements · scopes</text>
+      </g>
+
+      <!-- PingFederate (AS) nodes -->
       <g class="node" data-on="2">
-        <rect x="636" y="86" width="324" height="60" rx="8"/>
-        <text class="t1" x="798" y="110">Challenge Servlet</text>
-        <text class="t2" x="798" y="128">oidf.war · /oidf/federation/attestation-challenge</text>
+        <rect x="652" y="88" width="308" height="58" rx="8"/>
+        <text class="t1" x="806" y="113">Challenge Servlet</text>
+        <text class="t2" x="806" y="131">oidf.war · /federation/attestation-challenge</text>
       </g>
       <g class="node" data-on="4">
-        <rect x="636" y="160" width="324" height="60" rx="8"/>
-        <text class="t1" x="798" y="184">Token Endpoint</text>
-        <text class="t2" x="798" y="202">/as/token.oauth2 · client_credentials</text>
+        <rect x="652" y="158" width="308" height="52" rx="8"/>
+        <text class="t1" x="806" y="181">Token Endpoint</text>
+        <text class="t2" x="806" y="197">/as/token.oauth2</text>
       </g>
       <g class="node" data-on="4">
-        <rect x="636" y="234" width="324" height="54" rx="8"/>
-        <text class="t1" x="798" y="256">Issuance hook → ClientAttestationVerifier</text>
-        <text class="t2" x="798" y="273">OGNL validateClientAttestation(#this)</text>
+        <rect x="652" y="226" width="308" height="52" rx="8"/>
+        <text class="t1" x="806" y="249">Issuance hook → verifier</text>
+        <text class="t2" x="806" y="265">OGNL validateClientAttestation</text>
       </g>
       <g class="node" data-on="4">
-        <rect x="636" y="300" width="324" height="48" rx="8"/>
-        <text class="t1" x="798" y="320">oidf-mock-attesters.json</text>
-        <text class="t2" x="798" y="336">pre-trusted attester public key</text>
+        <rect x="652" y="294" width="308" height="62" rx="8"/>
+        <text class="t1" x="806" y="318">Authenticate: attestation + PoP</text>
+        <text class="t2" x="806" y="336">mock attester (dev) · then authorize →</text>
       </g>
     </svg>
     <div class="cap" id="diagCap"></div>
@@ -254,6 +285,127 @@
       <div id="tokDecoded"></div>
     </div>
   </section>
+
+  <!-- Day-0 bootstrap: deploy a client & enroll its entity key in the federation -->
+  <section class="step open" id="boot" style="margin-top:26px">
+    <div class="hd"><span class="n" style="font-size:10px;font-weight:700">0</span>
+      <h2>Day 0 — bootstrap: deploy a client and enroll its entity key</h2><span class="s" id="bootStatus"></span></div>
+    <div class="bd">
+      <p class="desc">Before any flow above can happen the client must be <b>born into the federation</b>. At deployment an
+      <b>entity key</b> is created <i>at the entity</i> — not the per-instance key of step&nbsp;1 (that one only proves
+      possession via the attestation's <code>cnf</code>). The entity key <b>self-signs the entity configuration</b> served at
+      <code>/.well-known/openid-federation</code>, and its <b>public half becomes the record in the federation controller</b>:
+      the anchor-signed subordinate statement binding <code>entity_id → public key</code>. The private key never leaves the
+      entity — here it is generated in <b>your browser</b> and stays there; only the public JWK and the signed statement go
+      out. Everything below is <b>live</b>: real keygen, a real registration in Lighthouse, a real <code>/resolve</code>.</p>
+      <section class="diagram" style="margin:4px 0 14px" id="bootDiag">
+        <svg viewBox="0 0 1000 250" role="img" aria-label="Client bootstrap flow">
+          <defs><marker id="ah3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <rect class="zone" x="16" y="54" width="340" height="170" rx="12"/>
+          <rect class="zone" x="724" y="54" width="260" height="170" rx="12"/>
+          <text class="zlabel" x="186" y="44">THE NEW CLIENT — DEPLOYED INSTANCE</text>
+          <text class="zlabel" x="854" y="44">TRUST CONTROLLER — LIGHTHOUSE</text>
+          <g class="edge" data-bs="2"><path class="flow" d="M336,146 L396,146" marker-end="url(#ah3)"/><text class="lbl" x="366" y="136">② publish</text></g>
+          <g class="edge" data-bs="3"><path class="flow" d="M300,110 C480,30 640,30 806,84" marker-end="url(#ah3)"/><text class="lbl" x="548" y="46">③ register public JWK — the controller record</text></g>
+          <g class="edge" data-bs="4"><path class="flow dash" d="M744,160 L684,160" marker-end="url(#ah3)"/><text class="lbl" x="714" y="182">④ /resolve fetches</text><text class="lbl" x="714" y="196">+ verifies the chain</text></g>
+          <g class="node" data-bs="1,2,3"><rect x="36" y="110" width="300" height="72" rx="8"/>
+            <text class="t1" x="186" y="138">Entity key — created at deploy</text>
+            <text class="t2" x="186" y="156">EC P-256 · generated in your browser</text>
+            <text class="t2" x="186" y="170">private key never leaves this page</text></g>
+          <g class="node" data-bs="2,3,4"><rect x="396" y="110" width="288" height="72" rx="8"/>
+            <text class="t1" x="540" y="138">Entity configuration</text>
+            <text class="t2" x="540" y="156">/e/&lt;name&gt;/.well-known/openid-federation</text>
+            <text class="t2" x="540" y="170">self-signed by the entity key</text></g>
+          <g class="node" data-bs="3,4"><rect x="744" y="110" width="220" height="72" rx="8"/>
+            <text class="t1" x="854" y="138">Subordinate record</text>
+            <text class="t2" x="854" y="156">entity_id → public JWK</text>
+            <text class="t2" x="854" y="170">anchor-signed statement</text></g>
+        </svg>
+        <div class="cap">① The keypair comes into existence at the entity. ② The entity self-signs its configuration —
+        the demo server hosts it at the entity's <code>/.well-known/openid-federation</code>. ③ Only the <b>public JWK</b>
+        is written to the controller, which answers with the <b>anchor-signed subordinate statement</b> — the federation's
+        record of this entity. ④ From then on anyone can <code>/resolve</code> the entity: the controller fetches the
+        self-signed configuration and verifies it against the key in its record.</div>
+      </section>
+      <div class="row" style="margin-bottom:12px">
+        <label class="opt">entity name
+          <input id="bootSlug" value="rp-boot" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px;font:12px var(--mono);width:140px"></label>
+        <span class="kv">entity_id <b><code id="bootEid"></code></b></span>
+      </div>
+      <div class="row">
+        <button id="bootGen">① Deploy — mint entity key</button>
+        <button id="bootSign" disabled>② Self-sign entity configuration</button>
+        <button id="bootEnroll" disabled>③ Enroll in the trust controller</button>
+        <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
+        <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
+      </div>
+      <div id="bootOutKey"></div>
+      <div id="bootOutCfg"></div>
+      <div id="bootOutEnroll"></div>
+    </div>
+  </section>
+
+  <!-- AS-side federation client authentication -->
+  <section class="step open" id="fedauth" style="margin-top:26px">
+    <div class="hd"><span class="n" style="font-size:10px;font-weight:700">AS</span>
+      <h2>How PingFederate authorizes a federation client</h2><span class="s" id="faStatus"></span></div>
+    <div class="bd">
+      <p class="desc">This is the <b>authorization</b> step that follows authentication. The client first
+        <b>authenticates</b> — in the attestation flow above, with its attestation credential; here, with its
+        <code>client_credentials</code>. <i>Based on</i> that authenticated identity, PingFederate then <b>authorizes</b>
+        it by resolving the client's <b>entity record from the trust controller</b> (Lighthouse) and granting access only
+        if the client is a <b>federation member</b> (chain resolves to the anchor), is <b>within policy</b>, its
+        <b>status</b> is active, and — the crux — the <b>requested scopes are within the scopes registered</b> to its
+        entity. The trust controller does <i>authorization</i>, not authentication. Computed live —
+        <code>/api/authorize</code> → trust controller <code>/resolve</code>.</p>
+      <section class="diagram" style="margin:4px 0 14px">
+        <svg viewBox="0 0 1000 292" role="img" aria-label="Federation client authentication flow">
+          <defs><marker id="ah2" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <rect class="zone" x="16" y="54" width="210" height="224" rx="12"/>
+          <rect class="zone" x="286" y="54" width="350" height="224" rx="12"/>
+          <rect class="zone" x="792" y="54" width="192" height="224" rx="12"/>
+          <text class="zlabel" x="121" y="44">THE CLIENT</text>
+          <text class="zlabel" x="461" y="44">PINGFEDERATE — THE AS</text>
+          <text class="zlabel" x="888" y="44">TRUST CONTROLLER</text>
+          <g class="edge" style="opacity:1"><path d="M210,152 L302,106" fill="none" stroke="var(--acc)" stroke-width="1.6" marker-end="url(#ah2)"/><text class="lbl" x="150" y="100" style="fill:var(--acc)">① client_credentials + scope</text></g>
+          <g class="edge" style="opacity:1"><path d="M614,90 L806,112" fill="none" stroke="var(--acc)" stroke-width="3" marker-end="url(#ah2)"/><text class="lbl" x="710" y="80" style="fill:var(--acc);font-weight:600">② resolve client</text></g>
+          <g class="edge" style="opacity:1"><path d="M614,122 L806,144" fill="none" stroke="var(--acc)" stroke-width="3" marker-end="url(#ah2)"/><text class="lbl" x="710" y="166" style="fill:var(--acc);font-weight:600">③ fetch anchor key</text></g>
+          <g class="edge" style="opacity:1"><path d="M808,184 L620,206" fill="none" stroke="var(--acc)" stroke-width="1.6" marker-end="url(#ah2)"/><text class="lbl" x="712" y="226" style="fill:var(--acc)">④ trust chain + metadata</text></g>
+          <g class="edge" style="opacity:1"><path d="M302,214 L210,172" fill="none" stroke="var(--acc)" stroke-width="1.6" marker-end="url(#ah2)"/><text class="lbl" x="150" y="234" style="fill:var(--acc)">⑤ token / reject</text></g>
+          <g class="node" style="opacity:1"><rect x="34" y="136" width="176" height="64" rx="8"/><text class="t1" x="122" y="164">Federation client</text><text class="t2" x="122" y="182">client_id = entity_id</text></g>
+          <g class="node" style="opacity:1"><rect x="302" y="76" width="316" height="52" rx="8"/><text class="t1" x="460" y="98">Token endpoint · criterion</text><text class="t2" x="460" y="115">authorizeClientEntity</text></g>
+          <g class="node" style="opacity:1"><rect x="302" y="162" width="316" height="100" rx="8"/><text class="t1" x="460" y="184">Authorization gate</text>
+            <g id="fg-member"><rect x="310" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="345" y="226" style="fill:var(--mut)">member</text></g>
+            <g id="fg-policy"><rect x="386" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="421" y="226" style="fill:var(--mut)">policy</text></g>
+            <g id="fg-scope"><rect x="462" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="497" y="226" style="fill:var(--mut)">scope</text></g>
+            <g id="fg-status"><rect x="538" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="573" y="226" style="fill:var(--mut)">status</text></g>
+          </g>
+          <g class="node" style="opacity:1"><rect x="808" y="102" width="160" height="118" rx="8"/><text class="t1" x="888" y="130">Lighthouse</text><text class="t2" x="888" y="149">anchor + resolver</text><text class="t2" x="888" y="176">/resolve</text><text class="t2" x="888" y="194">/.well-known</text></g>
+        </svg>
+        <div class="cap">Once the client is authenticated, the AS <b>authorizes</b> it: ② <code>GET /resolve</code> resolves the client and fetches its trust chain, ③ <code>GET /.well-known/openid-federation</code> the anchor's key. ④ PF validates the chain to the anchor, then makes the <b>authorization decision</b> — active member, within policy, and above all whether the <b>requested scopes are within the client's entitlements</b>.</div>
+      </section>
+      <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap">
+        <label class="opt" style="flex-direction:column;align-items:flex-start;gap:4px">client entity
+          <select id="faClient" class="sel" style="min-width:340px">
+            <option value="rp-sales">rp-sales — Contoso Sales RP (member · automatic · scoped)</option>
+            <option value="rp-legacy">rp-legacy — Legacy Batch RP (member · explicit-only)</option>
+            <option value="rp-suspended">rp-suspended — Suspended Agent RP (not enrolled)</option>
+          </select>
+        </label>
+        <span style="display:flex;flex-direction:column;gap:5px">
+          <span class="lab accent" style="margin:0">requested scopes</span>
+          <span class="row" id="faScopes" style="gap:12px">
+            <label class="opt"><input type="checkbox" value="read_accounts" checked> read_accounts</label>
+            <label class="opt"><input type="checkbox" value="create_opportunity"> create_opportunity</label>
+            <label class="opt"><input type="checkbox" value="submit_quote"> submit_quote</label>
+            <label class="opt"><input type="checkbox" value="delete_account"> delete_account</label>
+          </span>
+        </span>
+        <button id="faBtn">Resolve &amp; authenticate</button>
+      </div>
+      <div id="faOut"></div>
+    </div>
+  </section>
 </main>
 
 <script>
@@ -312,39 +464,46 @@ function authorizeRar(requested, entitled){
 // ── Federation-gated disclosure ──────────────────────────────────────────────
 // Mock AS federation profiles — stand in for resolving the target AS as a federation
 // entity (AS/.well-known/openid-federation → trust chain → anchor + trust marks).
-// In production these come from TrustChainValidator(AS entity), not a hard-coded table.
-const HOME_ANCHOR = 'https://anchor.acme-federation.example';
-const AS_PROFILES = {
-  'home-emea':   {label:'Contoso EMEA AS (home federation)',      resolvable:true,  anchor:HOME_ANCHOR,
-                  trust_marks:['acme:region:EMEA','acme:workload-inspection']},
-  'partner-crm': {label:'Partner CRM AS (same anchor)',           resolvable:true,  anchor:HOME_ANCHOR,
-                  trust_marks:['acme:region:EMEA']},
-  'external':    {label:'External AS (different trust anchor)',   resolvable:true,  anchor:'https://anchor.other-federation.example',
-                  trust_marks:[]},
-  'unknown':     {label:'Unknown AS (no resolvable chain)',       resolvable:false, anchor:null,
-                  trust_marks:[]}
+// LIVE: resolved via the demo server's /api/resolve proxy (Lighthouse /resolve + the AS's
+// entity configuration). No hard-coded table — this is a real federation resolution.
+const HOME_ANCHOR = 'https://lighthouse-staging-e017.up.railway.app';
+const AS_LABELS = {
+  'home-emea':   'Contoso EMEA AS — as-emea',
+  'partner-crm': 'Partner CRM AS — as-partner',
+  'external':    'External AS — as-external',
+  'unknown':     'Unknown AS — as-unknown'
 };
-function asProfile(){ const el=document.querySelector('#asProfile'); return AS_PROFILES[el?el.value:'home-emea']; }
+// Resolve the selected target AS as a federation entity (live HTTP → Lighthouse anchor).
+async function asProfile(){
+  const key = (document.querySelector('#asProfile')||{}).value || 'home-emea';
+  let r;
+  try{ r = await fetch('/api/resolve?profile='+encodeURIComponent(key)).then(x=>x.json()); }
+  catch(e){ r = {resolvable:false, home:false, anchor:null, trust_marks:[], reason:String(e)}; }
+  return {key, label:AS_LABELS[key]||key, sub:r.sub, resolvable:!!r.resolvable, home:!!r.home,
+          anchor:r.anchor||null, trust_marks:r.trust_marks||[], org:r.org, chain_len:r.chain_len,
+          reason:r.reason, live:true};
+}
 // Holder-side disclosure policy keyed on the AS's provable federation standing.
 // Returns which workload fields + whether the entitlement are revealed, and the rationale.
 function policyReveal(p){
   const low = new Set(['software_id','software_version','environment']);   // low-sensitivity workload
+  const hasWorkloadMark = (p.trust_marks||[]).some(m => (m||'').endsWith('/workload-inspection'));
   if(!p.resolvable) return {entitlement:false, all:false, workload:new Set(),
-    why:"AS chain does not resolve to a trusted anchor → minimal disclosure (default deny)."};
-  if(p.trust_marks.includes('acme:workload-inspection')) return {entitlement:true, all:true, workload:new Set(),
-    why:"AS holds trust mark <code>workload-inspection</code> → full workload + entitlement disclosed."};
-  if(p.anchor===HOME_ANCHOR) return {entitlement:true, all:false, workload:low,
-    why:"Same trust anchor, no <code>workload-inspection</code> mark → entitlement + low-sensitivity workload only."};
+    why:"AS has no resolvable entity configuration → minimal disclosure (default deny)."};
+  if(p.home && hasWorkloadMark) return {entitlement:true, all:true, workload:new Set(),
+    why:"Resolves to the home anchor and holds trust mark <code>workload-inspection</code> → full workload + entitlement disclosed."};
+  if(p.home) return {entitlement:true, all:false, workload:low,
+    why:"Resolves to the home anchor, no <code>workload-inspection</code> mark → entitlement + low-sensitivity workload only."};
   return {entitlement:true, all:false, workload:new Set(),
-    why:"Resolvable but different trust anchor → entitlement only, workload withheld (cross-domain minimization)."};
+    why:"Resolvable but under a different trust anchor → entitlement only, workload withheld (cross-domain minimization)."};
 }
 
 // ── diagram stage highlighting ──
 const CAPS = {
   1:"<b>Stage 1 — Generate keys.</b> The <b>attester</b> and <b>client-instance</b> keys are created in your browser. Nothing leaves the page yet.",
   2:"<b>Stage 2 — Fetch a challenge.</b> The browser POSTs to the <b>Challenge Servlet</b> in <code>oidf.war</code>; PingFederate returns a one-time, short-lived challenge.",
-  3:"<b>Stage 3 — Build artifacts.</b> The attester signs the <b>Attestation JWT</b> (binding the client key via <code>cnf</code>); the client key signs the <b>PoP / DPoP proof</b>. Still all in-browser.",
-  4:"<b>Stage 4 — Call the token endpoint.</b> The artifacts go to <code>/as/token.oauth2</code>; the issuance hook runs the <b>verifier</b>, which checks the proof and validates the attestation signature against PF's pre-trusted attester key, then issues (or rejects) the token."
+  3:"<b>Stage 3 — Federation-gated disclosure.</b> In SD-JWT mode the holder resolves the <b>target AS live against the Lighthouse anchor</b> (<code>/api/resolve</code> → Lighthouse <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) and builds the attestation as an SD-JWT, revealing only the claims the AS's standing entitles it to — everything else stays as salted <code>_sd</code> digests. The client key signs a PoP / DPoP proof whose <code>sd_hash</code> binds the exact disclosures. (Plain-JWT mode skips the disclosure step and sends every claim.)",
+  4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> (Lighthouse) to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects (also enforcing any AS-side required disclosures)."
 };
 let CUR_STAGE = 1;
 function highlightStage(n){
@@ -433,7 +592,7 @@ async function buildArtifacts(){
     // Disclosure is chosen by the HOLDER, gated on the target AS's federation standing
     // (resolved trust anchor + trust marks). Each workload field + the entitlement entry
     // is a selective disclosure; the policy decides which are presented to THIS AS.
-    const prof = asProfile();
+    const prof = await asProfile();
     const pol = policyReveal(prof);
     const revealField = k => pol.all || pol.workload.has(k);
     const wlDiscs = [];
@@ -484,13 +643,18 @@ function artBlock(title, jwt, dec){
 // Panel showing the AS resolved as a federation entity + the disclosure policy decision.
 function asEntityBlock(a){
   const prof=a.sdjwt.asProfile, pol=a.sdjwt.policy; if(!prof) return '';
-  const marks = prof.trust_marks.length ? prof.trust_marks.map(m=>`<code>${m}</code>`).join(' ') : '<span class="muted">none</span>';
-  const anchor = prof.resolvable ? `<code>${prof.anchor}</code>` : '<span class="pill err">unresolvable</span>';
+  const shortMark = m => m.replace(/^https?:\/\/[^/]+\/trust-marks\//,'').replace(/^https?:\/\//,'');
+  const marks = prof.trust_marks.length ? prof.trust_marks.map(m=>`<code>${shortMark(m)}</code>`).join(' ') : '<span class="muted">none</span>';
+  let anchorCell;
+  if(!prof.resolvable)   anchorCell = '<span class="pill err">unresolvable — no entity configuration</span>';
+  else if(prof.home)     anchorCell = `<code>${prof.anchor}</code> <span class="pill ok">home anchor</span>` + (prof.chain_len?` <span class="muted">· chain length ${prof.chain_len}</span>`:'');
+  else                   anchorCell = `<code>${prof.anchor||'—'}</code> <span class="pill warn">different anchor</span>`;
   return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-    <p class="lab accent">Target AS — resolved as a federation entity <span class="muted">(trust chain)</span></p>
+    <p class="lab accent">Target AS — resolved live as a federation entity <span class="pill ok" style="font-size:10px">Lighthouse /resolve</span></p>
     <table style="font-size:12px;border-collapse:collapse">
       <tr><td class="muted" style="padding:2px 10px 2px 0">profile</td><td>${prof.label}</td></tr>
-      <tr><td class="muted" style="padding:2px 10px 2px 0">trust anchor</td><td>${anchor}</td></tr>
+      <tr><td class="muted" style="padding:2px 10px 2px 0">entity_id</td><td><code>${prof.sub||'—'}</code></td></tr>
+      <tr><td class="muted" style="padding:2px 10px 2px 0">trust anchor</td><td>${anchorCell}</td></tr>
       <tr><td class="muted" style="padding:2px 10px 2px 0">trust marks</td><td>${marks}</td></tr>
     </table>
     <p class="hint" style="margin-top:8px"><b>Disclosure policy →</b> ${pol.why}</p>
@@ -617,8 +781,195 @@ document.querySelectorAll('input[name=enc]').forEach(r=>r.onchange=()=>{ syncEnc
 syncEncUI();
 renderRar();
 
-// click a step header to re-highlight its stage in the diagram
-document.querySelectorAll('main .step .hd').forEach((hd,i)=>{
+// ── AS-side federation client authentication panel ──
+function faScopes(){ return [...document.querySelectorAll('#faScopes input:checked')].map(c=>c.value); }
+function faGate(label, ok){ return `<span class="pill ${ok?'ok':'err'}">${ok?'✓':'✗'} ${label}</span>`; }
+// Light up the flow-diagram gate chips with the live decision.
+function fgSet(id, ok){ const g=document.getElementById(id); if(!g) return;
+  const col = ok ? 'var(--ok)' : 'var(--err)';
+  g.querySelector('rect').style.stroke = col;
+  g.querySelector('rect').style.fill = ok ? 'rgba(63,185,80,.14)' : 'rgba(248,81,73,.14)';
+  g.querySelector('text').style.fill = col; }
+function fgClear(){ ['fg-member','fg-policy','fg-scope','fg-status'].forEach(id=>{ const g=document.getElementById(id); if(!g) return;
+  g.querySelector('rect').style.stroke='var(--line)'; g.querySelector('rect').style.fill='none'; g.querySelector('text').style.fill='var(--mut)'; }); }
+async function faCheck(){
+  const client = document.querySelector('#faClient').value;
+  const scope = faScopes().join(' ');
+  setStatus('#faStatus','resolving…'); fgClear();
+  let d;
+  try{ d = await fetch('/api/authorize?client='+encodeURIComponent(client)+'&scope='+encodeURIComponent(scope)).then(x=>x.json()); }
+  catch(e){ setStatus('#faStatus','error',''); document.querySelector('#faOut').innerHTML='<p class="hint">could not reach /api/authorize</p>'; return; }
+  const c = d.checks||{};
+  fgSet('fg-member', c.member); fgSet('fg-policy', c.within_policy); fgSet('fg-scope', c.scope_ok); fgSet('fg-status', c.status_active);
+  setStatus('#faStatus', d.authenticated?'authenticated ✓':'rejected', '');
+  const gates = [faGate('federation member',c.member),faGate('within policy',c.within_policy),faGate('scope registered',c.scope_ok),faGate('status active',c.status_active)].join(' ');
+  const chips = a => (a&&a.length)?a.map(s=>`<code>${s}</code>`).join(' '):'<span class="muted">none</span>';
+  const details = (d.reg_types!==undefined) ? `<table style="font-size:12px;border-collapse:collapse;margin-top:10px">
+      <tr><td class="muted" style="padding:2px 12px 2px 0">entity_id</td><td><code>${d.sub}</code></td></tr>
+      <tr><td class="muted" style="padding:2px 12px 2px 0">organization</td><td>${d.org||'—'}</td></tr>
+      <tr><td class="muted" style="padding:2px 12px 2px 0">trust chain length</td><td>${d.chain_len??'—'}</td></tr>
+      <tr><td class="muted" style="padding:2px 12px 2px 0">registration types</td><td><code>${JSON.stringify(d.reg_types)}</code></td></tr>
+      <tr><td class="muted" style="padding:2px 12px 2px 0">registered scopes</td><td>${chips(d.registered_scopes)}</td></tr>
+      <tr><td class="muted" style="padding:2px 12px 2px 0">granted scopes</td><td>${chips(d.granted_scopes)}</td></tr>
+    </table>` : `<p class="kv" style="margin-top:10px"><b>entity_id</b> <code>${d.sub}</code></p>`;
+  document.querySelector('#faOut').innerHTML = `<div style="margin-top:16px;padding:12px 14px;border:1px solid var(--line);border-radius:10px">
+    <div class="row" style="justify-content:space-between;align-items:center;gap:10px">
+      <span class="row" style="gap:6px">${gates}</span>
+      <span class="pill ${d.authenticated?'ok':'err'}" style="font-size:13px;font-weight:600">${d.authenticated?'AUTHENTICATE':'REJECT'}</span>
+    </div>
+    <p class="hint" style="margin-top:10px"><b>PingFederate decision →</b> ${d.reason}</p>
+    ${details}
+  </div>`;
+}
+{ const b=$('#faBtn'); if(b) b.onclick=faCheck; }
+{ const el=$('#faClient'); if(el) el.onchange=()=>{ if(document.querySelector('#faOut').innerHTML) faCheck(); }; }
+document.querySelectorAll('#faScopes input').forEach(cb=>cb.onchange=()=>{ if(document.querySelector('#faOut').innerHTML) faCheck(); });
+
+// ── Day-0 bootstrap panel: mint the ENTITY key, self-sign the entity configuration,
+// enroll its public JWK as the controller record, and prove it with /resolve. All live.
+let BOOT = null;
+function bootSlugVal(){ const el=$('#bootSlug'); const v=(el.value||'').toLowerCase().replace(/[^a-z0-9-]/g,''); return v||'rp-boot'; }
+function bootEid(){ return location.origin + '/e/' + bootSlugVal(); }
+function bootAnchor(){ return CFG.lighthouse || HOME_ANCHOR; }
+function bootStage(n){ document.querySelectorAll('#bootDiag [data-bs]').forEach(el=>{
+  el.classList.toggle('active', el.getAttribute('data-bs').split(',').includes(String(n))); }); }
+// RFC 7638 thumbprint: SHA-256 over the canonical {"crv","kty","x","y"} JSON, base64url.
+async function jwkThumb(k){ return sha256b64u(j({crv:k.crv, kty:k.kty, x:k.x, y:k.y})); }
+function bootResolvePill(r, label){
+  return r.resolved
+    ? `<span class="pill ok">✓ ${label} — /resolve HTTP 200, trust chain length ${r.chain_len??'?'}</span>`
+    : `<span class="pill err">✗ ${label} — /resolve HTTP ${r.status}</span>`;
+}
+async function bootResolve(){ return fetch('/api/resolvesub?sub='+encodeURIComponent(BOOT.entityId)).then(x=>x.json()); }
+function syncBootEid(){ $('#bootEid').textContent = bootEid(); }
+{ const el=$('#bootSlug'); if(el){ el.oninput=syncBootEid; syncBootEid(); } }
+
+$('#bootGen').onclick = async () => {
+  const kp = await genKey();
+  const jwk = await pubJwk(kp);
+  jwk.kid = await jwkThumb(jwk);
+  BOOT = {slug:bootSlugVal(), entityId:bootEid(), kp, jwk};
+  $('#bootSlug').disabled = true; syncBootEid();
+  const privView = {kty:'EC', crv:'P-256', x:jwk.x, y:jwk.y,
+    d:'●●●●●●●●●●●●  private scalar — held in this browser, never sent anywhere'};
+  $('#bootOutKey').innerHTML = `<div style="margin:14px 0">
+    <p class="lab accent">Entity key — minted at deployment</p>
+    <div class="jwt">
+      <div><p class="lab p">public JWK — this is all the federation ever sees</p><pre>${pretty(jwk)}</pre></div>
+      <div><p class="lab h">private key — stays at the entity</p><pre>${pretty(privView)}</pre></div>
+    </div>
+    <p class="hint"><code>kid</code> is the key's RFC 7638 thumbprint. Contrast with step ①'s <b>client-instance</b> key:
+    that one is per-deployment and only proves possession (<code>cnf</code>); <b>this</b> key <i>is</i> the entity's
+    long-lived identity — it will sign the entity configuration, and its public half becomes the controller record.</p>
+  </div>`;
+  setStatus('#bootStatus','entity key minted');
+  bootStage(1);
+  $('#bootSign').disabled = false;
+  $('#bootOutCfg').innerHTML=''; $('#bootOutEnroll').innerHTML='';
+  $('#bootEnroll').disabled = $('#bootAuthz').disabled = $('#bootDereg').disabled = true;
+};
+
+$('#bootSign').onclick = async () => {
+  const now = Math.floor(Date.now()/1000);
+  const eid = BOOT.entityId;
+  const header = {alg:'ES256', typ:'entity-statement+jwt', kid:BOOT.jwk.kid};
+  const payload = {iss:eid, sub:eid, iat:now, exp:now+86400,
+    jwks:{keys:[BOOT.jwk]},
+    authority_hints:[bootAnchor()],
+    metadata:{
+      federation_entity:{organization_name:'Bootstrap Demo RP — minted in your browser'},
+      oauth_client:{client_registration_types:['automatic'], grant_types:['client_credentials'],
+        token_endpoint_auth_method:'private_key_jwt', scope:'read_accounts create_opportunity'}}};
+  const jwt = await jws(BOOT.kp, header, payload);
+  const [h,p,s] = jwt.split('.');
+  const sig = Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0));
+  const ok = await crypto.subtle.verify({name:'ECDSA',hash:'SHA-256'}, BOOT.kp.publicKey, sig, enc.encode(h+'.'+p));
+  BOOT.cfgJwt = jwt;
+  setStatus('#bootStatus','checking the controller — before enrolment…');
+  const before = await bootResolve();
+  $('#bootOutCfg').innerHTML =
+    artBlock('Entity configuration — the self-signed entity statement (iss == sub)', jwt, {header, payload})
+    + `<p style="margin:6px 0">
+        <span class="pill ${ok?'ok':'err'}">${ok?'✓ signature verifies against the entity key minted in ①':'✗ signature check failed'}</span>
+        ${bootResolvePill(before, 'before enrolment: unknown to the federation')}
+      </p>
+      <p class="hint">The <code>jwks</code> inside the statement is the public key from ① — the statement is
+      <b>self-signed</b>. On its own that proves nothing: the trust controller has no record of this entity yet,
+      so <code>/resolve</code> fails. Enrolment is what turns this orphan statement into a federation identity.</p>`;
+  setStatus('#bootStatus','entity configuration signed — not yet enrolled');
+  bootStage(2);
+  $('#bootEnroll').disabled = false;
+};
+
+$('#bootEnroll').onclick = async () => {
+  setStatus('#bootStatus','enrolling in the trust controller…');
+  const r = await fetch('/api/enroll',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:j({slug:BOOT.slug, entity_config_jwt:BOOT.cfgJwt, jwk:BOOT.jwk})}).then(x=>x.json());
+  if(r.error){
+    $('#bootOutEnroll').innerHTML = `<p class="hint"><span class="pill err">✗ enrol failed</span> ${r.error}</p>`;
+    setStatus('#bootStatus','enrol failed'); return;
+  }
+  const sst = r.subordinate_statement ? tryDecodeJwt(r.subordinate_statement) : null;
+  const keyMatch = sst && (sst.payload.jwks?.keys||[]).some(k=>k.x===BOOT.jwk.x && k.y===BOOT.jwk.y);
+  const after = await bootResolve();
+  const localHint = (!after.resolved && /^(localhost|127\.)/.test(location.hostname))
+    ? `<p class="hint"><b>Note:</b> you are running locally — Lighthouse cannot fetch
+       <code>${location.origin}</code> to verify the chain. On the hosted demo this resolve succeeds.</p>` : '';
+  $('#bootOutEnroll').innerHTML = `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+    <p class="lab accent">Enrolment — the record in the federation controller</p>
+    <p style="margin:6px 0">
+      <span class="pill ${r.registered?'ok':'err'}">${r.registered?'✓ registered in Lighthouse (admin API)':'✗ registration failed — HTTP '+r.admin_status}</span>
+      <span class="pill ok">entity configuration now hosted — <a href="${r.entity_id}/.well-known/openid-federation" target="_blank" rel="noopener">/.well-known/openid-federation</a></span>
+      ${r.replaced_stale_record?'<span class="pill warn">replaced a stale record for this entity_id</span>':''}
+    </p>
+    ${sst ? artBlock('Subordinate statement — fetched back from the controller (the record itself)', r.subordinate_statement, sst)
+          : '<p class="hint">could not fetch the subordinate statement back (HTTP '+r.fetch_status+')</p>'}
+    ${sst ? `<p class="hint">This is the federation's record of the new entity: <b>issued and signed by the anchor</b>
+      (<code>iss</code> = Lighthouse, header <code>kid</code> = the anchor's key), <code>sub</code> = your entity, and its
+      <code>jwks</code> ${keyMatch?'contains <span class="pill ok">exactly the public key minted in ①</span>':'<span class="pill warn">does not match the minted key</span>'} —
+      the controller vouches for the <i>key</i>, it never saw the private half.</p>` : ''}
+    <p style="margin:6px 0">${bootResolvePill(after, 'after enrolment: resolvable federation member')}</p>
+    ${localHint}
+  </div>`;
+  setStatus('#bootStatus', after.resolved ? 'enrolled — entity is a resolvable federation member ✓' : 'enrolled — awaiting resolvability');
+  bootStage(after.resolved ? 4 : 3);
+  $('#bootAuthz').disabled = false; $('#bootDereg').disabled = false;
+};
+
+$('#bootAuthz').onclick = () => {
+  const sel = $('#faClient');
+  let opt = sel.querySelector('option[data-boot]');
+  if(!opt){ opt = document.createElement('option'); opt.dataset.boot='1'; sel.appendChild(opt); }
+  opt.value = BOOT.entityId;
+  opt.textContent = `${BOOT.slug} — bootstrapped live just now (member · automatic · scoped)`;
+  sel.value = BOOT.entityId;
+  document.querySelector('#fedauth').scrollIntoView({behavior:'smooth'});
+  faCheck();
+};
+
+$('#bootDereg').onclick = async () => {
+  setStatus('#bootStatus','deregistering…');
+  const r = await fetch('/api/deregister',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:j({entity_id:BOOT.entityId})}).then(x=>x.json());
+  const after = await bootResolve();
+  $('#bootOutEnroll').insertAdjacentHTML('beforeend', `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+    <p class="lab accent">Suspension — the record is withdrawn</p>
+    <p style="margin:6px 0">
+      <span class="pill ${r.deregistered?'ok':'err'}">${r.deregistered?'✓ controller record deleted':'✗ deregister failed'}</span>
+      ${bootResolvePill(after, 'after deregistration')}
+    </p>
+    <p class="hint">The entity configuration is <b>still served</b> and still validly self-signed — but the federation no
+    longer vouches for it, so the chain to the anchor is gone. Run ④ again: the AS gate now rejects it as
+    “exists but not enrolled”. ③ re-enrols it.</p>
+  </div>`);
+  setStatus('#bootStatus','suspended — record withdrawn');
+  bootStage(2);
+  $('#bootEnroll').disabled = false;
+  const s=$('#faClient'); if(s && s.value===BOOT.entityId && document.querySelector('#faOut').innerHTML) faCheck();
+};
+
+// click a NUMBERED step header (s1–s4) to re-highlight its stage in the diagram
+document.querySelectorAll('main .step[id^="s"] .hd').forEach((hd,i)=>{
   hd.style.cursor='pointer';
   hd.onclick=()=>{ openStep('#s'+(i+1)); highlightStage(i+1); };
 });
