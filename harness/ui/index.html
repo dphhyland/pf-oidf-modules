@@ -63,6 +63,13 @@
   svg .edge .lbl{fill:var(--mut);font-size:9.5px}
   svg .edge.active .lbl{fill:var(--acc)}
   @keyframes flow{to{stroke-dashoffset:-13}}
+  /* flow tabs */
+  .tabs{display:flex;gap:4px;margin:2px 0 18px;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--mut);font-family:inherit;font-size:13px;font-weight:600;padding:9px 15px;cursor:pointer;margin-bottom:-1px}
+  .tab:hover{color:var(--ink)}
+  .tab.active{color:var(--ink);border-bottom-color:var(--acc)}
+  body[data-view="deploy"] [data-tab="authz"]{display:none!important}
+  body[data-view="authz"] [data-tab="deploy"]{display:none!important}
 </style>
 </head>
 <body>
@@ -71,22 +78,29 @@
   <span class="tag" id="cfgTag">loading…</span>
   <a class="tag" id="consoleLink" href="#" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none">↗ Open PingFederate Console</a>
   <span class="tag">draft-ietf-oauth-attestation-based-client-auth-09</span>
-  <span class="flowmode row">
+  <span class="flowmode row" data-tab="authz">
     <label class="opt"><input type="radio" name="mode" value="pop" checked> PoP mode</label>
     <label class="opt"><input type="radio" name="mode" value="dpop"> DPoP combined</label>
   </span>
-  <span class="row">
+  <span class="row" data-tab="authz">
     <label class="opt"><input type="radio" name="enc" value="jwt" checked> Plain JWT</label>
     <label class="opt"><input type="radio" name="enc" value="sdjwt"> SD-JWT · selective disclosure</label>
   </span>
 </header>
 <main>
-  <p class="muted">This drives the <b>live</b> PingFederate instance through a local proxy. Each step shows exactly what
+  <nav class="tabs" role="tablist">
+    <button class="tab" data-view-btn="deploy" type="button">① Deployment flow</button>
+    <button class="tab" data-view-btn="authz" type="button">② Authentication &amp; authorization</button>
+  </nav>
+  <p class="muted" data-tab="deploy">Day&nbsp;0 — how a client is <b>born into the federation</b>: mint its entity key,
+  self-sign its entity configuration, and register its public key with the trust controller. This happens once, at
+  deployment, and is what makes the client a resolvable federation entity before any token flow is possible.</p>
+  <p class="muted" data-tab="authz">This drives the <b>live</b> PingFederate instance through a local proxy. Each step shows exactly what
   the client does: mint keys, get a one-time challenge from the <code>ClientAttestationChallengeServlet</code>, build the
-  attestation &amp; proof JWTs, and call the token endpoint.</p>
+  attestation &amp; proof JWTs, and call the token endpoint — then how the AS <b>authorizes</b> the resolved client entity.</p>
 
   <!-- component interaction diagram -->
-  <section class="diagram">
+  <section class="diagram" data-tab="authz">
     <svg viewBox="0 0 1000 430" role="img" aria-label="Component interaction diagram">
       <defs>
         <marker id="ah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -199,7 +213,7 @@
   </section>
 
   <!-- 1 -->
-  <section class="step open" id="s1">
+  <section class="step open" id="s1" data-tab="authz">
     <div class="hd"><span class="n">1</span><h2>Generate keys</h2><span class="s" id="s1s"></span></div>
     <div class="bd">
       <p class="desc">Two EC P-256 keys, created in your browser via WebCrypto: the <b>Client Attester</b> (vouches for the
@@ -211,7 +225,7 @@
   </section>
 
   <!-- 2 -->
-  <section class="step" id="s2">
+  <section class="step" id="s2" data-tab="authz">
     <div class="hd"><span class="n">2</span><h2>Fetch a challenge from the servlet</h2><span class="s" id="s2s"></span></div>
     <div class="bd">
       <p class="desc"><code>POST /oidf/federation/attestation-challenge</code> → a one-time, short-lived challenge. Note the
@@ -223,7 +237,7 @@
   </section>
 
   <!-- 3 -->
-  <section class="step" id="s3">
+  <section class="step" id="s3" data-tab="authz">
     <div class="hd"><span class="n">3</span><h2>Build the attestation &amp; proof JWTs</h2><span class="s" id="s3s"></span></div>
     <div class="bd">
       <p class="desc">The <b>Client Attestation JWT</b> (signed by the attester, binds the client key via <code>cnf</code>) plus a
@@ -248,7 +262,7 @@
   </section>
 
   <!-- 4 -->
-  <section class="step" id="s4">
+  <section class="step" id="s4" data-tab="authz">
     <div class="hd"><span class="n">4</span><h2>Call the token endpoint</h2><span class="s" id="s4s"></span></div>
     <div class="bd">
       <p class="desc">Send the artifacts as <code>OAuth-Client-Attestation</code> + <code>OAuth-Client-Attestation-PoP</code>
@@ -287,7 +301,7 @@
   </section>
 
   <!-- Day-0 bootstrap: deploy a client & enroll its entity key in the federation -->
-  <section class="step open" id="boot" style="margin-top:26px">
+  <section class="step open" id="boot" data-tab="deploy" style="margin-top:26px">
     <div class="hd"><span class="n" style="font-size:10px;font-weight:700">0</span>
       <h2>Day 0 — bootstrap: deploy a client and enroll its entity key</h2><span class="s" id="bootStatus"></span></div>
     <div class="bd">
@@ -346,7 +360,7 @@
   </section>
 
   <!-- AS-side federation client authentication -->
-  <section class="step open" id="fedauth" style="margin-top:26px">
+  <section class="step open" id="fedauth" data-tab="authz" style="margin-top:26px">
     <div class="hd"><span class="n" style="font-size:10px;font-weight:700">AS</span>
       <h2>How PingFederate authorizes a federation client</h2><span class="s" id="faStatus"></span></div>
     <div class="bd">
@@ -943,6 +957,7 @@ $('#bootAuthz').onclick = () => {
   opt.value = BOOT.entityId;
   opt.textContent = `${BOOT.slug} — bootstrapped live just now (member · automatic · scoped)`;
   sel.value = BOOT.entityId;
+  showView('authz');
   document.querySelector('#fedauth').scrollIntoView({behavior:'smooth'});
   faCheck();
 };
@@ -974,6 +989,14 @@ document.querySelectorAll('main .step[id^="s"] .hd').forEach((hd,i)=>{
   hd.onclick=()=>{ openStep('#s'+(i+1)); highlightStage(i+1); };
 });
 highlightStage(1);
+
+// flow tabs — deployment (day 0) vs the runtime authentication/authorization flow
+function showView(v){
+  document.body.dataset.view = v;
+  document.querySelectorAll('[data-view-btn]').forEach(b=>b.classList.toggle('active', b.dataset.viewBtn===v));
+}
+document.querySelectorAll('[data-view-btn]').forEach(b=>b.onclick=()=>showView(b.dataset.viewBtn));
+showView('deploy');
 
 fetch('/config').then(r=>r.json()).then(c=>{
   CFG=c; $('#cfgTag').textContent=c.pf_base;
