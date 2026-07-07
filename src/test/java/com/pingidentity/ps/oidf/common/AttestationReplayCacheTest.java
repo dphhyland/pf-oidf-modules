@@ -10,14 +10,14 @@ class AttestationReplayCacheTest {
 
     @Test
     void firstUseAcceptedReplayRejected() {
-        AttestationReplayCache cache = new AttestationReplayCache();
+        InMemoryAttestationReplayCache cache = new InMemoryAttestationReplayCache();
         assertTrue(cache.firstSeen("client-a", "jti-1", 300L));
         assertFalse(cache.firstSeen("client-a", "jti-1", 300L));
     }
 
     @Test
     void differentJtiAndClientAreIndependent() {
-        AttestationReplayCache cache = new AttestationReplayCache();
+        InMemoryAttestationReplayCache cache = new InMemoryAttestationReplayCache();
         assertTrue(cache.firstSeen("client-a", "jti-1", 300L));
         assertTrue(cache.firstSeen("client-a", "jti-2", 300L));
         assertTrue(cache.firstSeen("client-b", "jti-1", 300L));
@@ -25,13 +25,13 @@ class AttestationReplayCacheTest {
 
     @Test
     void blankJtiRejected() {
-        AttestationReplayCache cache = new AttestationReplayCache();
+        InMemoryAttestationReplayCache cache = new InMemoryAttestationReplayCache();
         assertThrows(IllegalArgumentException.class, () -> cache.firstSeen("client-a", "  ", 300L));
     }
 
     @Test
     void boundedCacheEvictsButStaysUsable() {
-        AttestationReplayCache cache = new AttestationReplayCache(2);
+        InMemoryAttestationReplayCache cache = new InMemoryAttestationReplayCache(2);
         assertTrue(cache.firstSeen("c", "a", 300L));
         assertTrue(cache.firstSeen("c", "b", 300L));
         assertTrue(cache.firstSeen("c", "c", 300L)); // evicts eldest ("a")

@@ -39,7 +39,7 @@ class ClientAttestationVerifierSdJwtTest {
                 .acceptSdJwt(acceptSdJwt)
                 .requireSdJwt(requireSdJwt)
                 .build();
-        return new ClientAttestationVerifier(resolver, config, new AttestationReplayCache(), new AttestationChallengeService());
+        return new ClientAttestationVerifier(resolver, config, new InMemoryAttestationReplayCache(), new InMemoryAttestationChallengeService());
     }
 
     /** Issuer JWT with two entitlement entries as SD array elements and a workload field in {@code _sd}. */
@@ -161,7 +161,7 @@ class ClientAttestationVerifierSdJwtTest {
                 .addAcceptedAudience(OP_ISSUER).addAcceptedAudience(TOKEN_ENDPOINT).expectedHtu(TOKEN_ENDPOINT)
                 .requiredDisclosedClaims(Set.of("workload")).build();
         ClientAttestationVerifier v =
-                new ClientAttestationVerifier(resolver, config, new AttestationReplayCache(), new AttestationChallengeService());
+                new ClientAttestationVerifier(resolver, config, new InMemoryAttestationReplayCache(), new InMemoryAttestationChallengeService());
 
         String withheld = issuer + "~"; // no disclosures → workload reconstructs empty
         ClientAttestationException ex = assertThrows(ClientAttestationException.class, () -> v.verify(
