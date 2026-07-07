@@ -352,6 +352,14 @@
         <button id="bootEnroll" disabled>③ Enroll in the trust controller</button>
         <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
         <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
+        <button id="bootReset" class="ghost" type="button" style="margin-left:auto">↺ Reset — clear demo entities</button>
+      </div>
+      <div id="bootFed" style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+          <p class="lab accent" style="margin:0">Federation members — records held by the trust controller</p>
+          <button id="bootRefresh" class="ghost" type="button">↻ Refresh</button>
+        </div>
+        <div id="bootFedList"><p class="hint">loading…</p></div>
       </div>
       <div id="bootOutKey"></div>
       <div id="bootOutCfg"></div>
@@ -948,6 +956,7 @@ $('#bootEnroll').onclick = async () => {
   setStatus('#bootStatus', after.resolved ? 'enrolled — entity is a resolvable federation member ✓' : 'enrolled — awaiting resolvability');
   bootStage(after.resolved ? 4 : 3);
   $('#bootAuthz').disabled = false; $('#bootDereg').disabled = false;
+  loadFederation();
 };
 
 $('#bootAuthz').onclick = () => {
@@ -981,7 +990,39 @@ $('#bootDereg').onclick = async () => {
   bootStage(2);
   $('#bootEnroll').disabled = false;
   const s=$('#faClient'); if(s && s.value===BOOT.entityId && document.querySelector('#faOut').innerHTML) faCheck();
+  loadFederation();
 };
+
+// Federation membership — the live subordinate list the trust controller holds.
+async function loadFederation(){
+  const el = $('#bootFedList'); if(!el) return;
+  try{
+    const d = await fetch('/api/subordinates').then(x=>x.json());
+    const subs = d.subordinates || [];
+    if(!subs.length){ el.innerHTML = `<p class="hint">the trust controller holds no subordinate records (HTTP ${d.status})</p>`; return; }
+    const rows = subs.map(s => `<div style="display:flex;gap:8px;align-items:center;padding:3px 0">
+      <span class="pill ${s.demo?'ok':''}"${s.demo?'':' style="opacity:.5"'}>${s.demo?'demo':'member'}</span>
+      <code style="font-size:11px;word-break:break-all">${s.entity_id}</code></div>`).join('');
+    el.innerHTML = `<p class="hint" style="margin:2px 0 8px">${d.count} entit${d.count===1?'y':'ies'} registered at
+      <code>${d.anchor}</code> — <b>demo</b> = minted in this browser, <b>member</b> = pre-registered</p>${rows}`;
+  }catch(e){ el.innerHTML = `<p class="hint">could not reach <code>/api/subordinates</code></p>`; }
+}
+{ const b=$('#bootRefresh'); if(b) b.onclick=loadFederation; }
+
+$('#bootReset').onclick = async () => {
+  setStatus('#bootStatus','resetting — withdrawing demo records…');
+  const r = await fetch('/api/reset',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:j({origin:location.origin})}).then(x=>x.json());
+  BOOT = null;
+  $('#bootSlug').disabled = false;
+  $('#bootOutKey').innerHTML=''; $('#bootOutCfg').innerHTML=''; $('#bootOutEnroll').innerHTML='';
+  $('#bootSign').disabled = $('#bootEnroll').disabled = $('#bootAuthz').disabled = $('#bootDereg').disabled = true;
+  bootStage(0);
+  const sel=$('#faClient'), opt=sel&&sel.querySelector('option[data-boot]'); if(opt) opt.remove();
+  setStatus('#bootStatus', `reset — withdrew ${(r.removed_records||[]).length} demo record(s)`, 'ok');
+  loadFederation();
+};
+loadFederation();
 
 // click a NUMBERED step header (s1–s4) to re-highlight its stage in the diagram
 document.querySelectorAll('main .step[id^="s"] .hd').forEach((hd,i)=>{

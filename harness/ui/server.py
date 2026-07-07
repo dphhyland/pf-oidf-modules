@@ -338,6 +338,45 @@ def deregister_entity(payload):
     return {"entity_id": entity_id, "deregistered": remove_controller_record(entity_id)}
 
 
+def list_subordinates():
+    """List the subordinate records the trust controller (anchor) currently holds — the live federation
+    membership. Marks the entities this demo minted (present in ENROLLED)."""
+    status, body = http_get(ADMIN_SUBS)
+    subs = []
+    if status == 200:
+        try:
+            enrolled = {e["entity_id"] for e in ENROLLED.values()}
+            for s in json.loads(body):
+                eid = s.get("entity_id") or ""
+                subs.append({"id": s.get("id"), "entity_id": eid, "demo": eid in enrolled})
+        except Exception:  # noqa: BLE001
+            pass
+    subs.sort(key=lambda s: (not s["demo"], s["entity_id"]))
+    return {"anchor": LIGHTHOUSE, "status": status, "count": len(subs), "subordinates": subs}
+
+
+def reset_demo(payload):
+    """Reset the demo: withdraw the controller records for every entity this demo enrolled (matched by the
+    caller's origin and by ENROLLED) and stop hosting their configurations. Never touches the pre-registered
+    federation members — those live under a different origin (fedhost), so the prefix match excludes them."""
+    origin = (payload.get("origin") or "").rstrip("/")
+    prefix = origin + "/e/" if origin else None
+    targets = {e["entity_id"] for e in ENROLLED.values()}
+    status, body = http_get(ADMIN_SUBS)
+    if status == 200 and prefix:
+        try:
+            for s in json.loads(body):
+                eid = s.get("entity_id") or ""
+                if eid.startswith(prefix):
+                    targets.add(eid)
+        except Exception:  # noqa: BLE001
+            pass
+    removed = [eid for eid in sorted(targets) if remove_controller_record(eid)]
+    for slug in [s for s, e in ENROLLED.items() if not prefix or e["entity_id"].startswith(prefix)]:
+        ENROLLED.pop(slug, None)
+    return {"reset": True, "removed_records": removed, "count": len(removed)}
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, status, body, ctype="application/json"):
         b = body if isinstance(body, bytes) else body.encode("utf-8")
@@ -386,6 +425,8 @@ class Handler(BaseHTTPRequestHandler):
             client = (q.get("client") or ["rp-sales"])[0]
             scopes = (q.get("scope") or [""])[0].split()
             self._send(200, json.dumps(authorize_client(client, scopes)))
+        elif self.path.startswith("/api/subordinates"):
+            self._send(200, json.dumps(list_subordinates()))
         else:
             self._send(404, json.dumps({"error": "not found"}))
 
@@ -424,6 +465,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 payload = {}
             self._send(200, json.dumps(deregister_entity(payload)))
+        elif self.path == "/api/reset":
+            try:
+                payload = json.loads(raw or b"{}")
+            except Exception:  # noqa: BLE001
+                payload = {}
+            self._send(200, json.dumps(reset_demo(payload)))
         else:
             self._send(404, json.dumps({"error": "not found"}))
 
