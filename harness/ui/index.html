@@ -1050,7 +1050,7 @@ $('#bootToken').onclick = async () => {
     const now = Math.floor(Date.now()/1000);
     const header = {alg:'ES256', kid:BOOT.jwk.kid, trust_chain: tc.trust_chain || []};
     const assertion = await jws(BOOT.kp, header, {
-      iss: BOOT.entityId, sub: BOOT.entityId, aud: CFG.token_endpoint,
+      iss: BOOT.entityId, sub: BOOT.entityId, aud: (CFG.token_aud || CFG.token_endpoint),
       jti: (crypto.randomUUID ? crypto.randomUUID() : String(now)+Math.random()), iat: now, exp: now+300});
     const r = await fetch('/api/token-federation',{method:'POST',headers:{'Content-Type':'application/json'},
       body: j({form:{

@@ -40,6 +40,10 @@ PF_CLIENTS_URL = PF_BASE + "/federation/registered-clients"
 _origin = urllib.parse.urlsplit(PF_BASE)
 PF_ORIGIN = f"{_origin.scheme}://{_origin.netloc}"
 TOKEN_ENDPOINT = os.environ.get("TOKEN_ENDPOINT", PF_ORIGIN + "/as/token.oauth2")
+# The `aud` a private_key_jwt client assertion must carry. PingFederate's native private_key_jwt validator
+# checks aud against PF's *configured* runtime base URL (not the request host / external proxy), so behind a
+# TCP proxy this differs from TOKEN_ENDPOINT. Override with PF_TOKEN_AUD (e.g. https://localhost:9031/as/token.oauth2).
+PF_TOKEN_AUD = os.environ.get("PF_TOKEN_AUD", TOKEN_ENDPOINT)
 # Admin console (for the "Open PingFederate Console" link). Local default.
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "https://localhost:19999/pingfederate/app")
 # PF mandates a client auth method for client_credentials; the proxy supplies the demo
@@ -433,6 +437,7 @@ class Handler(BaseHTTPRequestHandler):
                 "pf_base": PF_BASE,
                 "challenge_url": CHALLENGE_URL,
                 "token_endpoint": TOKEN_ENDPOINT,
+                "token_aud": PF_TOKEN_AUD,
                 "pf_clients_url": PF_CLIENTS_URL,
                 "console_url": CONSOLE_URL,
                 "client_id": CLIENT_ID,
