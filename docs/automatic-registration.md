@@ -57,6 +57,36 @@ no extra wiring. The explicit `/federation/register` path is unchanged.
 - The filter is **fail-open**: any provisioning error is logged and the request proceeds, so PF then rejects
   an unknown/unauthenticated client exactly as before. A malformed or untrusted chain never yields a client.
 
+## Live staging deployment (2026-07-08) — proven end-to-end
+
+Deployed to the staging `pingfederate-runtime` (via the `idp-paz-authzen-adapter/demo/pingfederate` Docker
+context — the real staging source). The full transparent flow **issues a real Bearer token**: present a
+`private_key_jwt` carrying the trust chain → the filter validates + auto-provisions the client
+(`auto_registered`) → PF authenticates it → the issuance criterion accepts the federation member → token.
+
+Six issues surfaced only live (each fixed):
+1. **`ES512`** — the anchor signs subordinate statements with ES512 (P-521); the filter's
+   `acceptedSigningAlgorithms` init-param must include it (`ES256,ES384,ES512,RS256,PS256`).
+2. **redirect_uris NPE** — PF's `ClientManager` NPEs saving a client with null `redirect_uris`/`response_types`;
+   `buildClient` now defaults them to empty lists (fixed in `RegistrationService.java`).
+3. **`aud`** — PF's native `private_key_jwt` validator checks `aud` against PF's *configured* base URL
+   (`https://localhost:9031`), not the request host. The demo sends `PF_TOKEN_AUD`/`token_aud`.
+4. **Issuance criteria** — the `client_credentials` ATM mappings in `data.zip`
+   (`oauth-authz-server-settings.xml`) enforce `validateClientAttestation(#this)`; OR'd with
+   `OIDFederationUtils@validateTrustChain(#this, false, '<trust-controller>')` (4 mappings) so federation
+   clients pass. **This lives in the deploy context's `data.zip`, not this repo.**
+5. **scope** — `read_accounts create_opportunity` aren't defined AS scopes → `invalid_scope`; request none (or
+   define them).
+6. **idempotency** — `automaticRegister` skips an existing client; a re-mint with a *new* key under the same
+   `client_id` then mismatches the registered key. Fine for real clients (stable key); for the demo use a
+   fresh entity per run, or extend `automaticRegister` to update the jwks.
+
+Known remaining item: the **"Clients in PingFederate" panel reads 0** — the client store is ephemeral
+(`/opt/out`, resets per redeploy) and the `oidf.war` list servlet's `getClients()` view doesn't reflect
+clients the `pf-runtime.war` filter provisioned (custom `status` extended param likely dropped on reload, or
+a cross-context store view). Needs a distinguishing field PF preserves, or serving the list from the runtime
+context. Registration + token are unaffected.
+
 ## Verification status
 
 - Plugin: compiles offline; **78/78 unit tests pass** including new coverage for `automaticRegister`
