@@ -34,6 +34,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # Override with PF_BASE/TOKEN_ENDPOINT/CONSOLE_URL for a different instance.
 PF_BASE = os.environ.get("PF_BASE", "https://localhost:19031/oidf").rstrip("/")
 CHALLENGE_URL = PF_BASE + "/federation/attestation-challenge"
+# Read-only list of clients the module registered into PingFederate (explicit + automatic).
+PF_CLIENTS_URL = PF_BASE + "/federation/registered-clients"
 # PF's OAuth token endpoint is at the runtime ROOT (not under the module's /oidf context).
 _origin = urllib.parse.urlsplit(PF_BASE)
 PF_ORIGIN = f"{_origin.scheme}://{_origin.netloc}"
@@ -281,6 +283,21 @@ def resolve_sub(sub):
     return out
 
 
+def trust_chain_for(sub):
+    """Return the trust chain (list of entity-statement JWTs) the controller resolves for `sub`, so the client
+    can carry it in its client_assertion trust_chain header for OpenID Federation §12.1 automatic
+    registration at the token endpoint."""
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": TRUST_CONTROLLER})
+    status, body = http_get(TRUST_CONTROLLER + "/resolve?" + q)
+    if status == 200:
+        try:
+            chain = _jwt_payload(body).get("trust_chain", []) or []
+            return {"resolved": True, "trust_chain": chain, "length": len(chain)}
+        except Exception:  # noqa: BLE001
+            return {"resolved": False, "trust_chain": [], "error": "unparseable resolve response"}
+    return {"resolved": False, "trust_chain": [], "status": status, "error": (body or "")[:200]}
+
+
 def remove_controller_record(entity_id):
     """DELETE any subordinate record(s) for entity_id. Returns True if one was removed."""
     status, body = http_get(ADMIN_SUBS)
@@ -356,6 +373,22 @@ def list_subordinates():
     return {"anchor": TRUST_CONTROLLER, "status": status, "count": len(subs), "subordinates": subs}
 
 
+def list_pf_clients():
+    """List the OAuth clients this module has registered into PingFederate — via the plugin's own read-only
+    endpoint (no PF admin API / credentials needed). Each entry is tagged 'explicit' or 'automatic'. Returns
+    available=False (rather than an error) when the endpoint is absent, so the UI can show a 'pending
+    plugin redeploy' state instead of failing."""
+    status, body = http_get(PF_CLIENTS_URL)
+    if status == 200:
+        try:
+            d = json.loads(body)
+            clients = d.get("clients", [])
+            return {"available": True, "status": status, "count": d.get("count", len(clients)), "clients": clients}
+        except Exception:  # noqa: BLE001
+            return {"available": False, "status": status, "clients": [], "error": "unparseable response"}
+    return {"available": False, "status": status, "clients": [], "error": (body or "")[:200]}
+
+
 def reset_demo(payload):
     """Reset the demo: withdraw the controller records for every entity this demo enrolled (matched by the
     caller's origin and by ENROLLED) and stop hosting their configurations. Never touches the pre-registered
@@ -400,6 +433,7 @@ class Handler(BaseHTTPRequestHandler):
                 "pf_base": PF_BASE,
                 "challenge_url": CHALLENGE_URL,
                 "token_endpoint": TOKEN_ENDPOINT,
+                "pf_clients_url": PF_CLIENTS_URL,
                 "console_url": CONSOLE_URL,
                 "client_id": CLIENT_ID,
                 "git_commit": GIT_COMMIT,
@@ -428,6 +462,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(authorize_client(client, scopes)))
         elif self.path.startswith("/api/subordinates"):
             self._send(200, json.dumps(list_subordinates()))
+        elif self.path.startswith("/api/pf-clients"):
+            self._send(200, json.dumps(list_pf_clients()))
+        elif self.path.startswith("/api/trust-chain"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            sub = (q.get("sub") or [""])[0]
+            self._send(200, json.dumps(trust_chain_for(sub)))
         else:
             self._send(404, json.dumps({"error": "not found"}))
 
@@ -449,6 +489,19 @@ class Handler(BaseHTTPRequestHandler):
             form.setdefault("client_id", CLIENT_ID)
             if CLIENT_SECRET:
                 form.setdefault("client_secret", CLIENT_SECRET)
+            data = "&".join(f"{urllib.parse.quote(k)}={urllib.parse.quote(v)}"
+                            for k, v in form.items()).encode()
+            headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
+            status, body, hdrs = pf_post(TOKEN_ENDPOINT, data=data, headers=headers)
+            self._send(200, json.dumps({"status": status, "body": body}))
+        elif self.path == "/api/token-federation":
+            # OpenID Federation §12.1 automatic registration: the client authenticates purely with its own
+            # private_key_jwt assertion (which carries its trust chain) — NO demo client_id/secret injected.
+            # PingFederate provisions the client on the fly (the token-endpoint auto-registration filter),
+            # then authenticates this very request.
+            payload = json.loads(raw or b"{}")
+            form = payload.get("form", {})
+            headers = payload.get("headers", {})
             data = "&".join(f"{urllib.parse.quote(k)}={urllib.parse.quote(v)}"
                             for k, v in form.items()).encode()
             headers.setdefault("Content-Type", "application/x-www-form-urlencoded")

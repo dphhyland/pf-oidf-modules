@@ -350,6 +350,7 @@
         <button id="bootGen">① Deploy — mint entity key</button>
         <button id="bootSign" disabled>② Self-sign entity configuration</button>
         <button id="bootEnroll" disabled>③ Enroll in the trust controller</button>
+        <button id="bootToken" class="ghost" disabled title="Present the entity's private_key_jwt (carrying its trust chain) at PingFederate's token endpoint — no /federation/register call">⚡ Get a token — automatic registration</button>
         <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
         <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
         <button id="bootReset" class="ghost" type="button" style="margin-left:auto">↺ Reset — clear demo entities</button>
@@ -361,6 +362,14 @@
         </div>
         <div id="bootFedList"><p class="hint">loading…</p></div>
       </div>
+      <div id="bootPfClients" style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+        <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
+          <p class="lab accent" style="margin:0">Clients registered in PingFederate</p>
+          <button id="bootPfRefresh" class="ghost" type="button">↻ Refresh</button>
+        </div>
+        <div id="bootPfList"><p class="hint">loading…</p></div>
+      </div>
+      <div id="bootOutToken"></div>
       <div id="bootOutKey"></div>
       <div id="bootOutCfg"></div>
       <div id="bootOutEnroll"></div>
@@ -955,7 +964,7 @@ $('#bootEnroll').onclick = async () => {
   </div>`;
   setStatus('#bootStatus', after.resolved ? 'enrolled — entity is a resolvable federation member ✓' : 'enrolled — awaiting resolvability');
   bootStage(after.resolved ? 4 : 3);
-  $('#bootAuthz').disabled = false; $('#bootDereg').disabled = false;
+  $('#bootAuthz').disabled = false; $('#bootDereg').disabled = false; $('#bootToken').disabled = false;
   loadFederation();
 };
 
@@ -1008,6 +1017,66 @@ async function loadFederation(){
   }catch(e){ el.innerHTML = `<p class="hint">could not reach <code>/api/subordinates</code></p>`; }
 }
 { const b=$('#bootRefresh'); if(b) b.onclick=loadFederation; }
+
+// Clients PingFederate itself holds — served by the module's own read-only endpoint (no PF admin creds).
+async function loadPfClients(){
+  const el = $('#bootPfList'); if(!el) return;
+  try{
+    const d = await fetch('/api/pf-clients').then(x=>x.json());
+    if(!d.available){
+      el.innerHTML = `<p class="hint">PingFederate's <code>/federation/registered-clients</code> endpoint isn't answering yet (HTTP ${d.status||'—'}). It ships in this module — it lists clients once the plugin is (re)deployed.</p>`;
+      return;
+    }
+    const cs = d.clients || [];
+    if(!cs.length){ el.innerHTML = `<p class="hint">PingFederate holds no federation-registered clients yet — run <b>⚡</b> above to auto-register this entity.</p>`; return; }
+    const rows = cs.map(c => `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;flex-wrap:wrap">
+      <span class="pill ${c.registration==='automatic'?'ok':''}"${c.registration==='automatic'?'':' style="opacity:.55"'}>${c.registration}</span>
+      <code style="font-size:11px;word-break:break-all">${c.client_id}</code>
+      ${(c.scopes||[]).map(s=>`<span class="pill" style="opacity:.5;font-size:10px">${s}</span>`).join('')}</div>`).join('');
+    el.innerHTML = `<p class="hint" style="margin:2px 0 8px">${d.count} client${d.count===1?'':'s'} held by <b>PingFederate</b> —
+      <b>automatic</b> = provisioned on first token from its trust chain (§12.1), <b>explicit</b> = via <code>/federation/register</code></p>${rows}`;
+  }catch(e){ el.innerHTML = `<p class="hint">could not reach <code>/api/pf-clients</code></p>`; }
+}
+{ const b=$('#bootPfRefresh'); if(b) b.onclick=loadPfClients; }
+
+// ⚡ OpenID Federation §12.1 automatic registration: the entity presents ONLY its private_key_jwt — whose
+// trust_chain header carries its chain to the anchor — at PingFederate's token endpoint. PF validates the
+// chain, provisions the client on the fly (no /federation/register), and issues the token.
+$('#bootToken').onclick = async () => {
+  setStatus('#bootStatus','requesting a token — automatic registration…');
+  const out = $('#bootOutToken');
+  try{
+    const tc = await fetch('/api/trust-chain?sub='+encodeURIComponent(BOOT.entityId)).then(x=>x.json());
+    const now = Math.floor(Date.now()/1000);
+    const header = {alg:'ES256', kid:BOOT.jwk.kid, trust_chain: tc.trust_chain || []};
+    const assertion = await jws(BOOT.kp, header, {
+      iss: BOOT.entityId, sub: BOOT.entityId, aud: CFG.token_endpoint,
+      jti: (crypto.randomUUID ? crypto.randomUUID() : String(now)+Math.random()), iat: now, exp: now+300});
+    const r = await fetch('/api/token-federation',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: j({form:{
+        grant_type:'client_credentials',
+        client_assertion_type:'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+        client_assertion: assertion,
+        scope:'read_accounts create_opportunity'}})}).then(x=>x.json());
+    const ok = r.status===200;
+    let detail;
+    try { const b=JSON.parse(r.body); detail = ok ? `access_token issued — ${(b.access_token||'').length} chars, token_type ${b.token_type||'?'}, expires_in ${b.expires_in||'?'}` : (b.error_description||b.error||r.body); }
+    catch(_) { detail = (r.body||'').slice(0,400); }
+    out.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+      <p class="lab accent">Automatic registration — PingFederate token endpoint</p>
+      <p style="margin:6px 0">
+        <span class="pill ${ok?'ok':'err'}">${ok?'✓ token issued — PingFederate auto-provisioned the client':'✗ token endpoint HTTP '+r.status}</span>
+        <span class="muted" style="font-size:11px">trust chain length ${(tc.trust_chain||[]).length}${tc.resolved?'':' — chain unresolved'}</span></p>
+      <p class="hint">The client sent only a <code>private_key_jwt</code> whose <code>trust_chain</code> header carries its chain to the anchor —
+      no <code>/federation/register</code> call. ${ok
+        ? 'PingFederate validated the chain, provisioned the client as <code>auto_registered</code>, and issued the token — it now appears below.'
+        : 'This needs the token-endpoint auto-registration filter live in PingFederate (see the pending plugin redeploy).'}</p>
+      <pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;margin:6px 0 0">${detail}</pre></div>`;
+    setStatus('#bootStatus', ok?'token issued — client automatically registered ✓':'token request returned HTTP '+r.status);
+    loadPfClients();
+  }catch(e){ out.innerHTML = `<p class="hint">token request failed: ${e.message}</p>`; }
+};
+loadPfClients();
 
 $('#bootReset').onclick = async () => {
   setStatus('#bootStatus','resetting — withdrawing demo records…');
