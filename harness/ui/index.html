@@ -179,11 +179,11 @@
         <text class="t2" x="194" y="371">signed in browser · sd_hash binds it</text>
       </g>
 
-      <!-- trust controller (Lighthouse): resolved by the holder (target AS, stage 3) and the verifier (attester, stage 4) -->
+      <!-- trust controller: resolved by the holder (target AS, stage 3) and the verifier (attester, stage 4) -->
       <g class="node" data-on="3,4">
         <rect x="402" y="150" width="196" height="92" rx="8"/>
         <text class="t1" x="500" y="176">Trust controller</text>
-        <text class="t2" x="500" y="196">Lighthouse · authorization</text>
+        <text class="t2" x="500" y="196">OpenID Federation · authorization</text>
         <text class="t2" x="500" y="214">status · entitlements · scopes</text>
       </g>
 
@@ -311,14 +311,14 @@
       <code>/.well-known/openid-federation</code>, and its <b>public half becomes the record in the federation controller</b>:
       the anchor-signed subordinate statement binding <code>entity_id → public key</code>. The private key never leaves the
       entity — here it is generated in <b>your browser</b> and stays there; only the public JWK and the signed statement go
-      out. Everything below is <b>live</b>: real keygen, a real registration in Lighthouse, a real <code>/resolve</code>.</p>
+      out. Everything below is <b>live</b>: real keygen, a real registration in the trust controller, a real <code>/resolve</code>.</p>
       <section class="diagram" style="margin:4px 0 14px" id="bootDiag">
         <svg viewBox="0 0 1000 250" role="img" aria-label="Client bootstrap flow">
           <defs><marker id="ah3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
           <rect class="zone" x="16" y="54" width="340" height="170" rx="12"/>
           <rect class="zone" x="724" y="54" width="260" height="170" rx="12"/>
           <text class="zlabel" x="186" y="44">THE NEW CLIENT — DEPLOYED INSTANCE</text>
-          <text class="zlabel" x="854" y="44">TRUST CONTROLLER — LIGHTHOUSE</text>
+          <text class="zlabel" x="854" y="44">OPENID FEDERATION TRUST CONTROLLER</text>
           <g class="edge" data-bs="2"><path class="flow" d="M336,146 L396,146" marker-end="url(#ah3)"/><text class="lbl" x="366" y="136">② publish</text></g>
           <g class="edge" data-bs="3"><path class="flow" d="M300,110 C480,30 640,30 806,84" marker-end="url(#ah3)"/><text class="lbl" x="548" y="46">③ register public JWK — the controller record</text></g>
           <g class="edge" data-bs="4"><path class="flow dash" d="M744,160 L684,160" marker-end="url(#ah3)"/><text class="lbl" x="714" y="182">④ /resolve fetches</text><text class="lbl" x="714" y="196">+ verifies the chain</text></g>
@@ -375,7 +375,7 @@
       <p class="desc">This is the <b>authorization</b> step that follows authentication. The client first
         <b>authenticates</b> — in the attestation flow above, with its attestation credential; here, with its
         <code>client_credentials</code>. <i>Based on</i> that authenticated identity, PingFederate then <b>authorizes</b>
-        it by resolving the client's <b>entity record from the trust controller</b> (Lighthouse) and granting access only
+        it by resolving the client's <b>entity record from the trust controller</b> and granting access only
         if the client is a <b>federation member</b> (chain resolves to the anchor), is <b>within policy</b>, its
         <b>status</b> is active, and — the crux — the <b>requested scopes are within the scopes registered</b> to its
         entity. The trust controller does <i>authorization</i>, not authentication. Computed live —
@@ -402,7 +402,7 @@
             <g id="fg-scope"><rect x="462" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="497" y="226" style="fill:var(--mut)">scope</text></g>
             <g id="fg-status"><rect x="538" y="210" width="70" height="24" rx="12" style="fill:none;stroke:var(--line)"/><text class="t2" x="573" y="226" style="fill:var(--mut)">status</text></g>
           </g>
-          <g class="node" style="opacity:1"><rect x="808" y="102" width="160" height="118" rx="8"/><text class="t1" x="888" y="130">Lighthouse</text><text class="t2" x="888" y="149">anchor + resolver</text><text class="t2" x="888" y="176">/resolve</text><text class="t2" x="888" y="194">/.well-known</text></g>
+          <g class="node" style="opacity:1"><rect x="808" y="102" width="160" height="118" rx="8"/><text class="t1" x="888" y="130">OpenID Federation</text><text class="t2" x="888" y="149">anchor + resolver</text><text class="t2" x="888" y="176">/resolve</text><text class="t2" x="888" y="194">/.well-known</text></g>
         </svg>
         <div class="cap">Once the client is authenticated, the AS <b>authorizes</b> it: ② <code>GET /resolve</code> resolves the client and fetches its trust chain, ③ <code>GET /.well-known/openid-federation</code> the anchor's key. ④ PF validates the chain to the anchor, then makes the <b>authorization decision</b> — active member, within policy, and above all whether the <b>requested scopes are within the client's entitlements</b>.</div>
       </section>
@@ -486,7 +486,7 @@ function authorizeRar(requested, entitled){
 // ── Federation-gated disclosure ──────────────────────────────────────────────
 // Mock AS federation profiles — stand in for resolving the target AS as a federation
 // entity (AS/.well-known/openid-federation → trust chain → anchor + trust marks).
-// LIVE: resolved via the demo server's /api/resolve proxy (Lighthouse /resolve + the AS's
+// LIVE: resolved via the demo server's /api/resolve proxy (trust controller /resolve + the AS's
 // entity configuration). No hard-coded table — this is a real federation resolution.
 const HOME_ANCHOR = 'https://lighthouse-staging-e017.up.railway.app';
 const AS_LABELS = {
@@ -495,7 +495,7 @@ const AS_LABELS = {
   'external':    'External AS — as-external',
   'unknown':     'Unknown AS — as-unknown'
 };
-// Resolve the selected target AS as a federation entity (live HTTP → Lighthouse anchor).
+// Resolve the selected target AS as a federation entity (live HTTP → trust controller anchor).
 async function asProfile(){
   const key = (document.querySelector('#asProfile')||{}).value || 'home-emea';
   let r;
@@ -524,8 +524,8 @@ function policyReveal(p){
 const CAPS = {
   1:"<b>Stage 1 — Generate keys.</b> The <b>attester</b> and <b>client-instance</b> keys are created in your browser. Nothing leaves the page yet.",
   2:"<b>Stage 2 — Fetch a challenge.</b> The browser POSTs to the <b>Challenge Servlet</b> in <code>oidf.war</code>; PingFederate returns a one-time, short-lived challenge.",
-  3:"<b>Stage 3 — Federation-gated disclosure.</b> In SD-JWT mode the holder resolves the <b>target AS live against the Lighthouse anchor</b> (<code>/api/resolve</code> → Lighthouse <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) and builds the attestation as an SD-JWT, revealing only the claims the AS's standing entitles it to — everything else stays as salted <code>_sd</code> digests. The client key signs a PoP / DPoP proof whose <code>sd_hash</code> binds the exact disclosures. (Plain-JWT mode skips the disclosure step and sends every claim.)",
-  4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> (Lighthouse) to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects (also enforcing any AS-side required disclosures)."
+  3:"<b>Stage 3 — Federation-gated disclosure.</b> In SD-JWT mode the holder resolves the <b>target AS live against the trust-controller anchor</b> (<code>/api/resolve</code> → trust controller <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) and builds the attestation as an SD-JWT, revealing only the claims the AS's standing entitles it to — everything else stays as salted <code>_sd</code> digests. The client key signs a PoP / DPoP proof whose <code>sd_hash</code> binds the exact disclosures. (Plain-JWT mode skips the disclosure step and sends every claim.)",
+  4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects (also enforcing any AS-side required disclosures)."
 };
 let CUR_STAGE = 1;
 function highlightStage(n){
@@ -672,7 +672,7 @@ function asEntityBlock(a){
   else if(prof.home)     anchorCell = `<code>${prof.anchor}</code> <span class="pill ok">home anchor</span>` + (prof.chain_len?` <span class="muted">· chain length ${prof.chain_len}</span>`:'');
   else                   anchorCell = `<code>${prof.anchor||'—'}</code> <span class="pill warn">different anchor</span>`;
   return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-    <p class="lab accent">Target AS — resolved live as a federation entity <span class="pill ok" style="font-size:10px">Lighthouse /resolve</span></p>
+    <p class="lab accent">Target AS — resolved live as a federation entity <span class="pill ok" style="font-size:10px">trust controller /resolve</span></p>
     <table style="font-size:12px;border-collapse:collapse">
       <tr><td class="muted" style="padding:2px 10px 2px 0">profile</td><td>${prof.label}</td></tr>
       <tr><td class="muted" style="padding:2px 10px 2px 0">entity_id</td><td><code>${prof.sub||'—'}</code></td></tr>
@@ -852,7 +852,7 @@ document.querySelectorAll('#faScopes input').forEach(cb=>cb.onchange=()=>{ if(do
 let BOOT = null;
 function bootSlugVal(){ const el=$('#bootSlug'); const v=(el.value||'').toLowerCase().replace(/[^a-z0-9-]/g,''); return v||'rp-boot'; }
 function bootEid(){ return location.origin + '/e/' + bootSlugVal(); }
-function bootAnchor(){ return CFG.lighthouse || HOME_ANCHOR; }
+function bootAnchor(){ return CFG.trust_controller || HOME_ANCHOR; }
 function bootStage(n){ document.querySelectorAll('#bootDiag [data-bs]').forEach(el=>{
   el.classList.toggle('active', el.getAttribute('data-bs').split(',').includes(String(n))); }); }
 // RFC 7638 thumbprint: SHA-256 over the canonical {"crv","kty","x","y"} JSON, base64url.
@@ -935,19 +935,19 @@ $('#bootEnroll').onclick = async () => {
   const keyMatch = sst && (sst.payload.jwks?.keys||[]).some(k=>k.x===BOOT.jwk.x && k.y===BOOT.jwk.y);
   const after = await bootResolve();
   const localHint = (!after.resolved && /^(localhost|127\.)/.test(location.hostname))
-    ? `<p class="hint"><b>Note:</b> you are running locally — Lighthouse cannot fetch
+    ? `<p class="hint"><b>Note:</b> you are running locally — the trust controller cannot fetch
        <code>${location.origin}</code> to verify the chain. On the hosted demo this resolve succeeds.</p>` : '';
   $('#bootOutEnroll').innerHTML = `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
     <p class="lab accent">Enrolment — the record in the federation controller</p>
     <p style="margin:6px 0">
-      <span class="pill ${r.registered?'ok':'err'}">${r.registered?'✓ registered in Lighthouse (admin API)':'✗ registration failed — HTTP '+r.admin_status}</span>
+      <span class="pill ${r.registered?'ok':'err'}">${r.registered?'✓ registered with the trust controller (admin API)':'✗ registration failed — HTTP '+r.admin_status}</span>
       <span class="pill ok">entity configuration now hosted — <a href="${r.entity_id}/.well-known/openid-federation" target="_blank" rel="noopener">/.well-known/openid-federation</a></span>
       ${r.replaced_stale_record?'<span class="pill warn">replaced a stale record for this entity_id</span>':''}
     </p>
     ${sst ? artBlock('Subordinate statement — fetched back from the controller (the record itself)', r.subordinate_statement, sst)
           : '<p class="hint">could not fetch the subordinate statement back (HTTP '+r.fetch_status+')</p>'}
     ${sst ? `<p class="hint">This is the federation's record of the new entity: <b>issued and signed by the anchor</b>
-      (<code>iss</code> = Lighthouse, header <code>kid</code> = the anchor's key), <code>sub</code> = your entity, and its
+      (<code>iss</code> = the trust controller, header <code>kid</code> = the anchor's key), <code>sub</code> = your entity, and its
       <code>jwks</code> ${keyMatch?'contains <span class="pill ok">exactly the public key minted in ①</span>':'<span class="pill warn">does not match the minted key</span>'} —
       the controller vouches for the <i>key</i>, it never saw the private half.</p>` : ''}
     <p style="margin:6px 0">${bootResolvePill(after, 'after enrolment: resolvable federation member')}</p>
@@ -1003,8 +1003,8 @@ async function loadFederation(){
     const rows = subs.map(s => `<div style="display:flex;gap:8px;align-items:center;padding:3px 0">
       <span class="pill ${s.demo?'ok':''}"${s.demo?'':' style="opacity:.5"'}>${s.demo?'demo':'member'}</span>
       <code style="font-size:11px;word-break:break-all">${s.entity_id}</code></div>`).join('');
-    el.innerHTML = `<p class="hint" style="margin:2px 0 8px">${d.count} entit${d.count===1?'y':'ies'} registered at
-      <code>${d.anchor}</code> — <b>demo</b> = minted in this browser, <b>member</b> = pre-registered</p>${rows}`;
+    el.innerHTML = `<p class="hint" style="margin:2px 0 8px">${d.count} entit${d.count===1?'y':'ies'} held by the
+      <b>OpenID Federation Trust Controller</b> — <b>demo</b> = minted in this browser, <b>member</b> = pre-registered</p>${rows}`;
   }catch(e){ el.innerHTML = `<p class="hint">could not reach <code>/api/subordinates</code></p>`; }
 }
 { const b=$('#bootRefresh'); if(b) b.onclick=loadFederation; }

@@ -48,7 +48,8 @@ CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "demo-secret-123")
 # Workload attributes the demo UI advertises in its attestation's "workload" claim.
 # git_commit: $OIDF_GIT_COMMIT (Railway sets no git), else `git rev-parse`, else "unknown".
 SOFTWARE_VERSION = os.environ.get("SOFTWARE_VERSION", "0.0.1-SNAPSHOT")
-# Live federation the demo resolves the target AS against (Lighthouse anchor + fedhost entities).
+# Live federation the demo resolves the target AS against (trust-controller anchor + fedhost entities).
+# (env keys keep the LIGHTHOUSE / RAILWAY_SERVICE_LIGHTHOUSE_URL names — that is the Railway service id.)
 # Prefer an explicit override, else Railway's injected service URL (bare host), else a default.
 def _fed_url(explicit_env, railway_ref_env, default):
     v = os.environ.get(explicit_env)
@@ -60,12 +61,12 @@ def _fed_url(explicit_env, railway_ref_env, default):
     return default
 
 
-LIGHTHOUSE = _fed_url("LIGHTHOUSE", "RAILWAY_SERVICE_LIGHTHOUSE_URL", "https://lighthouse-staging-e017.up.railway.app")
+TRUST_CONTROLLER = _fed_url("LIGHTHOUSE", "RAILWAY_SERVICE_LIGHTHOUSE_URL", "https://lighthouse-staging-e017.up.railway.app")
 FEDHOST = _fed_url("FEDHOST", "RAILWAY_SERVICE_FEDHOST_URL", "https://fedhost-staging.up.railway.app")
 # The step-3 "target AS federation profile" options map to real federation entities.
 AS_PROFILE_SUB = {
-    "home-emea":   FEDHOST + "/e/as-emea",      # under Lighthouse + workload-inspection mark
-    "partner-crm": FEDHOST + "/e/as-partner",   # under Lighthouse, no mark
+    "home-emea":   FEDHOST + "/e/as-emea",      # under the trust controller + workload-inspection mark
+    "partner-crm": FEDHOST + "/e/as-partner",   # under the trust controller, no mark
     "external":    FEDHOST + "/e/as-external",   # under a different anchor
     "unknown":     FEDHOST + "/e/as-unknown",    # no entity configuration (404)
 }
@@ -127,7 +128,7 @@ def _jwt_payload(jwt):
 
 def resolve_as(profile):
     """Resolve the target AS as a federation entity, live. Reads its entity configuration
-    (trust marks + authority hints) and runs a Lighthouse /resolve to test whether it chains
+    (trust marks + authority hints) and runs a trust-controller /resolve to test whether it chains
     to our home anchor — what a holder-side TrustChainValidator would do before disclosing."""
     sub = AS_PROFILE_SUB.get(profile)
     if not sub:
@@ -144,8 +145,8 @@ def resolve_as(profile):
     marks = [m.get("id") for m in cfg.get("trust_marks", []) if isinstance(m, dict)]
     hints = cfg.get("authority_hints", [])
     org = cfg.get("metadata", {}).get("federation_entity", {}).get("organization_name", sub)
-    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
-    res_status, res_body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": TRUST_CONTROLLER})
+    res_status, res_body = http_get(TRUST_CONTROLLER + "/resolve?" + q)
     home = res_status == 200
     chain_len = None
     if home:
@@ -154,7 +155,7 @@ def resolve_as(profile):
         except Exception:  # noqa: BLE001
             pass
     return {"sub": sub, "resolvable": True, "home": home,
-            "anchor": LIGHTHOUSE if home else (hints[0] if hints else None),
+            "anchor": TRUST_CONTROLLER if home else (hints[0] if hints else None),
             "trust_marks": marks, "org": org, "chain_len": chain_len}
 
 
@@ -172,8 +173,8 @@ def authorize_client(client_key, requested_scopes):
     and the requested scopes are within the scopes registered to its entity metadata."""
     sub = CLIENT_SUB.get(client_key, client_key)
     requested = [s for s in requested_scopes if s]
-    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
-    res_status, res_body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": TRUST_CONTROLLER})
+    res_status, res_body = http_get(TRUST_CONTROLLER + "/resolve?" + q)
     checks = {"member": False, "status_active": False, "within_policy": False, "scope_ok": False}
     if res_status != 200:
         cfg_status, _ = http_get(sub + "/.well-known/openid-federation")
@@ -187,7 +188,7 @@ def authorize_client(client_key, requested_scopes):
     # PF verifies the resolve-response is signed by the anchor before trusting it: fetch the
     # anchor's published keys (GET /.well-known/openid-federation) and confirm the response's
     # signing key is one of them. (jose4j does the full ES512 verify in PF; here we match the kid.)
-    acfg_status, acfg_body = http_get(LIGHTHOUSE + "/.well-known/openid-federation")
+    acfg_status, acfg_body = http_get(TRUST_CONTROLLER + "/.well-known/openid-federation")
     anchor_kids = []
     if acfg_status == 200:
         try:
@@ -243,9 +244,9 @@ def authorize_client(client_key, requested_scopes):
 # and hands us the public JWK + signed JWT. This server then (a) hosts the entity
 # configuration at /e/<slug>/.well-known/openid-federation (the demo UI's public URL is
 # the entity_id) and (b) registers the public key as a subordinate record in the trust
-# controller (Lighthouse admin API). The private key never leaves the browser.
+# controller (admin API). The private key never leaves the browser.
 ENROLLED = {}  # slug -> {"jwt": entity_config_jwt, "entity_id": sub}
-ADMIN_SUBS = LIGHTHOUSE + "/api/v1/admin/subordinates"
+ADMIN_SUBS = TRUST_CONTROLLER + "/api/v1/admin/subordinates"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,63}$")
 
 
@@ -266,8 +267,8 @@ def http_json(method, url, obj=None):
 
 def resolve_sub(sub):
     """Ask the trust controller to resolve an entity — used for the before/after check."""
-    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": LIGHTHOUSE})
-    status, body = http_get(LIGHTHOUSE + "/resolve?" + q)
+    q = urllib.parse.urlencode({"sub": sub, "trust_anchor": TRUST_CONTROLLER})
+    status, body = http_get(TRUST_CONTROLLER + "/resolve?" + q)
     out = {"sub": sub, "resolved": status == 200, "status": status}
     if status == 200:
         out["resolve_jwt"] = body
@@ -321,7 +322,7 @@ def enroll_entity(payload):
                                      {"entity_id": sub, "jwks": {"keys": [jwk]}})
     # The anchor-signed subordinate statement IS "the record": fetch it back to show it.
     fq = urllib.parse.urlencode({"sub": sub})
-    fetch_status, fetch_body = http_get(LIGHTHOUSE + "/fetch?" + fq)
+    fetch_status, fetch_body = http_get(TRUST_CONTROLLER + "/fetch?" + fq)
     return {"entity_id": sub, "registered": reg_status in (200, 201),
             "replaced_stale_record": replaced, "admin_status": reg_status,
             "admin_body": None if reg_status in (200, 201) else reg_body[:400],
@@ -352,7 +353,7 @@ def list_subordinates():
         except Exception:  # noqa: BLE001
             pass
     subs.sort(key=lambda s: (not s["demo"], s["entity_id"]))
-    return {"anchor": LIGHTHOUSE, "status": status, "count": len(subs), "subordinates": subs}
+    return {"anchor": TRUST_CONTROLLER, "status": status, "count": len(subs), "subordinates": subs}
 
 
 def reset_demo(payload):
@@ -403,7 +404,7 @@ class Handler(BaseHTTPRequestHandler):
                 "client_id": CLIENT_ID,
                 "git_commit": GIT_COMMIT,
                 "software_version": SOFTWARE_VERSION,
-                "lighthouse": LIGHTHOUSE,
+                "trust_controller": TRUST_CONTROLLER,
             }))
         elif self.path.startswith("/api/resolvesub"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
