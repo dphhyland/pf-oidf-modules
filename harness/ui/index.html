@@ -669,7 +669,7 @@ function asEntityBlock(a){
   const marks = prof.trust_marks.length ? prof.trust_marks.map(m=>`<code>${shortMark(m)}</code>`).join(' ') : '<span class="muted">none</span>';
   let anchorCell;
   if(!prof.resolvable)   anchorCell = '<span class="pill err">unresolvable — no entity configuration</span>';
-  else if(prof.home)     anchorCell = `<code>${prof.anchor}</code> <span class="pill ok">home anchor</span>` + (prof.chain_len?` <span class="muted">· chain length ${prof.chain_len}</span>`:'');
+  else if(prof.home)     anchorCell = `<b>OpenID Federation Trust Controller</b> <span class="pill ok">home anchor</span>` + (prof.chain_len?` <span class="muted">· chain length ${prof.chain_len}</span>`:'');
   else                   anchorCell = `<code>${prof.anchor||'—'}</code> <span class="pill warn">different anchor</span>`;
   return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
     <p class="lab accent">Target AS — resolved live as a federation entity <span class="pill ok" style="font-size:10px">trust controller /resolve</span></p>
