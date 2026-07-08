@@ -1030,11 +1030,11 @@ async function loadPfClients(){
     const cs = d.clients || [];
     if(!cs.length){ el.innerHTML = `<p class="hint">PingFederate holds no federation-registered clients yet — run <b>⚡</b> above to auto-register this entity.</p>`; return; }
     const rows = cs.map(c => `<div style="display:flex;gap:8px;align-items:center;padding:3px 0;flex-wrap:wrap">
-      <span class="pill ${c.registration==='automatic'?'ok':''}"${c.registration==='automatic'?'':' style="opacity:.55"'}>${c.registration}</span>
+      <span class="pill ${(c.registration==='automatic'||c.registration==='federation')?'ok':''}"${(c.registration==='automatic'||c.registration==='federation')?'':' style="opacity:.55"'}>${c.registration}</span>
       <code style="font-size:11px;word-break:break-all">${c.client_id}</code>
       ${(c.scopes||[]).map(s=>`<span class="pill" style="opacity:.5;font-size:10px">${s}</span>`).join('')}</div>`).join('');
     el.innerHTML = `<p class="hint" style="margin:2px 0 8px">${d.count} client${d.count===1?'':'s'} held by <b>PingFederate</b> —
-      <b>automatic</b> = provisioned on first token from its trust chain (§12.1), <b>explicit</b> = via <code>/federation/register</code></p>${rows}`;
+      <b>federation</b> = provisioned from its trust chain on first token (OIDF §12.1 automatic registration); PingFederate does not persist the explicit-vs-automatic marker, so a trust-chain client reads back as <b>federation</b>.</p>${rows}`;
   }catch(e){ el.innerHTML = `<p class="hint">could not reach <code>/api/pf-clients</code></p>`; }
 }
 { const b=$('#bootPfRefresh'); if(b) b.onclick=loadPfClients; }

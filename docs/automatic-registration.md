@@ -81,11 +81,12 @@ Six issues surfaced only live (each fixed):
    `client_id` then mismatches the registered key. Fine for real clients (stable key); for the demo use a
    fresh entity per run, or extend `automaticRegister` to update the jwks.
 
-Known remaining item: the **"Clients in PingFederate" panel reads 0** — the client store is ephemeral
-(`/opt/out`, resets per redeploy) and the `oidf.war` list servlet's `getClients()` view doesn't reflect
-clients the `pf-runtime.war` filter provisioned (custom `status` extended param likely dropped on reload, or
-a cross-context store view). Needs a distinguishing field PF preserves, or serving the list from the runtime
-context. Registration + token are unaffected.
+7. **Panel read-back** — PF **drops the custom `status` extended param on reload** (confirmed: it reads back
+   `null`), so the list servlet couldn't recognise auto-registered clients (`getClients()` *does* see them —
+   `MgmtFactory` is shared). Fixed: `RegisteredClientsServlet` also recognises a federation client by shape
+   (`private_key_jwt` + http(s) client-id + inline jwks) and labels it `federation`; it returns `total_clients`
+   for diagnosis. The store is still ephemeral (`/opt/out` resets per redeploy), so the panel lists only
+   clients registered since the last PF redeploy.
 
 ## Verification status
 
