@@ -373,6 +373,8 @@
         </div>
         <div id="bootPfList"><p class="hint">loading…</p></div>
       </div>
+      <div id="bootHierarchy"></div>
+      <div id="bootActivity"></div>
       <div id="bootOutToken"></div>
       <div id="bootOutKey"></div>
       <div id="bootOutCfg"></div>
@@ -1049,11 +1051,59 @@ async function loadPfClients(){
 // ⚡ OpenID Federation §12.1 automatic registration: the entity presents ONLY its private_key_jwt — whose
 // trust_chain header carries its chain to the anchor — at PingFederate's token endpoint. PF validates the
 // chain, provisions the client on the fly (no /federation/register), and issues the token.
+// --- Signed entity hierarchy (leaf -> trust anchor) decoded from the trust chain ---
+function b64uJson(s){ try{ s=s.replace(/-/g,'+').replace(/_/g,'/'); s+='='.repeat((4-s.length%4)%4); return JSON.parse(decodeURIComponent(escape(atob(s)))); }catch(_){ return {}; } }
+function kidShort(k){ return k ? (String(k).slice(0,10)+'…') : '—'; }
+function eidShort(e){ try{ const u=new URL(e); return u.host+u.pathname; }catch(_){ return e||'—'; } }
+function renderHierarchy(tc){
+  const el = $('#bootHierarchy'); if(!el) return;
+  const chain = (tc && tc.trust_chain) || [];
+  if(!chain.length){ el.innerHTML=''; return; }
+  const nodes = chain.map(jwt=>{ const p=jwt.split('.'); return {hdr:b64uJson(p[0]), pl:b64uJson(p[1])}; });
+  const leaf   = nodes.find(n=>n.pl.iss===n.pl.sub && (n.pl.authority_hints||[]).length);
+  const anchor = nodes.find(n=>n.pl.iss===n.pl.sub && !(n.pl.authority_hints||[]).length);
+  const sub    = nodes.find(n=>n.pl.iss!==n.pl.sub);   // anchor's subordinate statement about the leaf
+  const roles  = n => Object.keys((n&&n.pl.metadata)||{}).join(', ') || '—';
+  const box = (icon,label,n,foot)=>`<div style="border:1px solid var(--line);border-radius:8px;padding:8px 12px">
+      <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline">
+        <b>${icon} ${label}</b><span class="muted" style="font-size:11px">self-signed · kid ${kidShort(n&&n.hdr.kid)}</span></div>
+      <div style="font-family:monospace;font-size:12px;margin-top:2px;word-break:break-all">${n?eidShort(n.pl.sub):'—'}</div>
+      <div class="muted" style="font-size:11px">${foot}</div></div>`;
+  const arrow = txt => `<div style="text-align:center;color:var(--muted);font-size:11px;line-height:1.3">│<br>${txt}<br>▼</div>`;
+  el.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+    <p class="lab accent" style="margin:0 0 8px">Signed entity hierarchy — leaf → trust anchor
+      <span class="muted" style="font-size:11px">(${chain.length} signed statements · resolved ${tc.resolved?'✓':'✗'})</span></p>
+    ${anchor? box('🏛','TRUST ANCHOR', anchor, 'roles: '+roles(anchor)) : ''}
+    ${arrow(`anchor signs a <b>subordinate statement</b> vouching for the leaf's key`+(sub?` &nbsp;<span style="font-family:monospace">iss=${eidShort(sub.pl.iss)} · sub=${eidShort(sub.pl.sub)} · kid ${kidShort(sub.hdr.kid)}</span>`:''))}
+    ${leaf? box('📄','LEAF ENTITY (this RP)', leaf, 'authority_hints → anchor · roles: '+roles(leaf)) : ''}
+    <p class="hint" style="margin:8px 0 0">Each box is a JWS the entity signed with its own key; the anchor's subordinate statement is the link that binds the leaf into the federation. This exact chain travels in the assertion's <code>trust_chain</code> header — what PingFederate validates below.</p></div>`;
+}
+
+// --- PingFederate AS activity: the federation-plugin + assertion-servlet log lines, pulled via Railway ---
+async function loadActivity(){
+  const el = $('#bootActivity'); if(!el) return;
+  el.innerHTML = `<p class="hint">loading PingFederate activity…</p>`;
+  try{
+    const r = await fetch('/api/pf-activity?entity='+encodeURIComponent(BOOT?BOOT.entityId:'')).then(x=>x.json());
+    const head = `<p class="lab accent" style="margin:0 0 6px">PingFederate AS activity — federation resolve/fetch · assertion · registration</p>`;
+    if(r.enabled===false){
+      el.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px dashed var(--line);border-radius:8px">${head}
+        <p class="hint">Live logs are off. Set <code>RAILWAY_TOKEN</code> (a Railway project token) on <code>pf-demo-ui</code> so the demo can pull <code>pingfederate-runtime</code>'s emitted logs. ${r.hint||''}</p></div>`; return; }
+    const lines = r.lines||[];
+    el.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">${head}
+      ${r.error?`<p class="hint">log query error: ${r.error}</p>`:''}
+      ${lines.length? `<pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;margin:0;max-height:220px;overflow:auto">${lines.map(l=>l.replace(/</g,'&lt;')).join('\n')}</pre>`
+                    : '<p class="hint">no matching log lines yet — run ⚡ and refresh</p>'}
+      <p class="hint" style="margin:6px 0 0">Emitted by the federation plugin (<code>RegistrationService</code>, trust-chain validator) and the assertion path (<code>ClientAttestationUtils</code> / <code>ClientPrivateKeyJwtValidator</code>) in <code>pingfederate-runtime</code>.</p></div>`;
+  }catch(e){ el.innerHTML = `<p class="hint">activity unavailable: ${e.message}</p>`; }
+}
+
 $('#bootToken').onclick = async () => {
   setStatus('#bootStatus','requesting a token — automatic registration…');
   const out = $('#bootOutToken');
   try{
     const tc = await fetch('/api/trust-chain?sub='+encodeURIComponent(BOOT.entityId)).then(x=>x.json());
+    renderHierarchy(tc);                       // show the signed entity hierarchy up to the anchor
     const now = Math.floor(Date.now()/1000);
     const header = {alg:'ES256', kid:BOOT.jwk.kid, trust_chain: tc.trust_chain || []};
     const assertion = await jws(BOOT.kp, header, {
@@ -1080,6 +1130,7 @@ $('#bootToken').onclick = async () => {
       <pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;margin:6px 0 0">${detail}</pre></div>`;
     setStatus('#bootStatus', ok?'token issued — client automatically registered ✓':'token request returned HTTP '+r.status);
     loadPfClients();
+    loadActivity();                            // pull PF's federation-plugin + assertion-servlet log lines
   }catch(e){ out.innerHTML = `<p class="hint">token request failed: ${e.message}</p>`; }
 };
 loadPfClients();

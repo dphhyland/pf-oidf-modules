@@ -48,6 +48,17 @@ TOKEN_ENDPOINT = os.environ.get("TOKEN_ENDPOINT", PF_ORIGIN + "/as/token.oauth2"
 PF_TOKEN_AUD = os.environ.get("PF_TOKEN_AUD", TOKEN_ENDPOINT)
 # Admin console (for the "Open PingFederate Console" link). Local default.
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "https://localhost:19999/pingfederate/app")
+# Live PF activity logs (optional): pull pingfederate-runtime's emitted logs via Railway's GraphQL API so
+# the demo can show the federation-plugin resolve/fetch/registration + assertion-servlet lines. Needs a
+# Railway PROJECT token in RAILWAY_TOKEN; without it the activity panel just prints setup instructions.
+RAILWAY_TOKEN = os.environ.get("RAILWAY_TOKEN", "")
+RAILWAY_API = os.environ.get("RAILWAY_API", "https://backboard.railway.com/graphql/v2")
+PF_SERVICE_ID = os.environ.get("PF_SERVICE_ID", "413fdf8a-ce01-45fc-9009-c2a16df48311")        # pingfederate-runtime
+PF_ENVIRONMENT_ID = os.environ.get("PF_ENVIRONMENT_ID", "db9ebc2a-b223-42ec-8a15-a26ee83ad24d")  # staging
+PF_LOG_FILTER = os.environ.get(
+    "PF_LOG_FILTER",
+    "RegistrationService|TrustChainValidator|TrustController|OIDFederation|ClientAttestation|"
+    "ClientPrivateKeyJwt|AutoRegistration|Automatically registered")
 # PF mandates a client auth method for client_credentials; the proxy supplies the demo
 # client's id+secret so the request passes client auth and reaches the attestation
 # issuance criterion (the actual client authentication is done by the attestation hook).
@@ -132,6 +143,46 @@ def _jwt_payload(jwt):
     seg = jwt.split(".")[1]
     seg += "=" * (-len(seg) % 4)
     return json.loads(base64.urlsafe_b64decode(seg))
+
+
+def _railway_gql(query, variables):
+    body = json.dumps({"query": query, "variables": variables}).encode("utf-8")
+    req = urllib.request.Request(
+        RAILWAY_API, data=body, method="POST",
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + RAILWAY_TOKEN})
+    with urllib.request.urlopen(req, context=SSL_CTX, timeout=15) as r:
+        return json.loads(r.read().decode("utf-8", "replace"))
+
+
+def pf_activity(entity):
+    """Pull pingfederate-runtime's emitted logs via Railway and keep the federation-plugin +
+    assertion-servlet lines. Best-effort: returns {enabled, lines|error} and never raises."""
+    if not RAILWAY_TOKEN:
+        return {"enabled": False, "hint": "create a Railway project token and set RAILWAY_TOKEN on pf-demo-ui"}
+    try:
+        dq = ("query($s:String!,$e:String!){deployments(first:1,input:{serviceId:$s,environmentId:$e})"
+              "{edges{node{id}}}}")
+        d = _railway_gql(dq, {"s": PF_SERVICE_ID, "e": PF_ENVIRONMENT_ID})
+        if d.get("errors"):
+            return {"enabled": True, "error": str(d["errors"])[:200], "lines": []}
+        edges = (((d.get("data") or {}).get("deployments") or {}).get("edges") or [])
+        if not edges:
+            return {"enabled": True, "error": "no deployment found for the PF service", "lines": []}
+        dep_id = edges[0]["node"]["id"]
+        lq = "query($d:String!,$n:Int!){deploymentLogs(deploymentId:$d,limit:$n){message}}"
+        lg = _railway_gql(lq, {"d": dep_id, "n": 500})
+        if lg.get("errors"):
+            return {"enabled": True, "error": str(lg["errors"])[:200], "lines": []}
+        logs = (((lg.get("data") or {}).get("deploymentLogs")) or [])
+        pat = re.compile(PF_LOG_FILTER)
+        lines = [l.get("message", "") for l in logs if pat.search(l.get("message", ""))]
+        if entity:
+            slug = entity.rstrip("/").rsplit("/", 1)[-1]
+            narrowed = [m for m in lines if slug and slug in m]
+            lines = narrowed or lines
+        return {"enabled": True, "lines": lines[-40:]}
+    except Exception as e:  # noqa: BLE001
+        return {"enabled": True, "error": str(e)[:200], "lines": []}
 
 
 def resolve_as(profile):
@@ -471,6 +522,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(list_subordinates()))
         elif self.path.startswith("/api/pf-clients"):
             self._send(200, json.dumps(list_pf_clients()))
+        elif self.path.startswith("/api/pf-activity"):
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            entity = (q.get("entity") or [""])[0]
+            self._send(200, json.dumps(pf_activity(entity)))
         elif self.path.startswith("/api/trust-chain"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             sub = (q.get("sub") or [""])[0]
