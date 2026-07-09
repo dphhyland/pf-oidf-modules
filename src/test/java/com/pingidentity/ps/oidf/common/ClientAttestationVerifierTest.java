@@ -29,7 +29,7 @@ class ClientAttestationVerifierTest {
         attesterKey = TestJwts.ec("attester-1");
         instanceKey = TestJwts.ec("instance-1");
         resolver = (iss, chain) -> List.of(JsonWebKey.Factory.newJwk(TestJwts.publicParams(attesterKey)));
-        challengeService = new AttestationChallengeService();
+        challengeService = new InMemoryAttestationChallengeService();
         verifier = newVerifier(false);
     }
 
@@ -40,7 +40,7 @@ class ClientAttestationVerifierTest {
                 .expectedHtu(TOKEN_ENDPOINT)
                 .challengeRequired(challengeRequired)
                 .build();
-        return new ClientAttestationVerifier(resolver, config, new AttestationReplayCache(), challengeService);
+        return new ClientAttestationVerifier(resolver, config, new InMemoryAttestationReplayCache(), challengeService);
     }
 
     private String attestation(Map<String, Object> cnfJwk, long expSecondsFromNow) throws Exception {

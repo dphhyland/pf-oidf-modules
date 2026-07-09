@@ -39,9 +39,15 @@ com/pingidentity/ps/oidf/servlet/trustanchor/FederationConfiguration.java
 com/pingidentity/ps/oidf/servlet/trustanchor/FederationService.java
 com/pingidentity/ps/oidf/servlet/trustanchor/OpenIdFederationServlet.java
 
-# ── Local Claude Code settings ──
-.claude/settings.local.json
+# ── Authored module source — canonical copy now lives in the carve-out repos ──
+# (oidf-jose / client-attestation / openid-federation / pf-integration). Kept
+# locally for the pf-oidf-modules build; not re-published in this repo.
+com/pingidentity/ps/oidf/common/ClientEntityAuthorizer.java
+
+# ── Local Claude Code working dir (settings, launch config, skills) ──
+.claude/
 summary.txt
 
 # Build mirror (sources are copied here from ./com at build time)
 src/main/
+pf-rar-paz-plugin/paz/
