@@ -957,6 +957,7 @@ $('#bootEnroll').onclick = async () => {
     <p style="margin:6px 0">
       <span class="pill ${r.registered?'ok':'err'}">${r.registered?'✓ registered with the trust controller (admin API)':'✗ registration failed — HTTP '+r.admin_status}</span>
       <span class="pill ok">entity configuration now hosted — <a href="${r.entity_id}/.well-known/openid-federation" target="_blank" rel="noopener">/.well-known/openid-federation</a></span>
+      <span class="pill ok">entity statement from the trust controller — <a href="${bootAnchor()}/fetch?sub=${encodeURIComponent(r.entity_id)}" target="_blank" rel="noopener">/fetch?sub=…</a></span>
       ${r.replaced_stale_record?'<span class="pill warn">replaced a stale record for this entity_id</span>':''}
     </p>
     ${sst ? artBlock('Subordinate statement — fetched back from the controller (the record itself)', r.subordinate_statement, sst)
