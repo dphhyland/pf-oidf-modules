@@ -878,7 +878,8 @@ function syncBootEid(){ $('#bootEid').textContent = bootEid(); }
 $('#bootGen').onclick = async () => {
   const kp = await genKey();
   const jwk = await pubJwk(kp);
-  jwk.kid = await jwkThumb(jwk);
+  jwk.kid = await jwkThumb(jwk);          // RFC 7638 thumbprint over {crv,kty,x,y} — computed before alg/use
+  jwk.alg = 'ES256'; jwk.use = 'sig';     // so PF permits ES256 for private_key_jwt on the auto-registered client
   BOOT = {slug:bootSlugVal(), entityId:bootEid(), kp, jwk};
   $('#bootSlug').disabled = true; syncBootEid();
   const privView = {kty:'EC', crv:'P-256', x:jwk.x, y:jwk.y,
@@ -910,7 +911,8 @@ $('#bootSign').onclick = async () => {
     metadata:{
       federation_entity:{organization_name:'Bootstrap Demo RP — minted in your browser'},
       oauth_client:{client_registration_types:['automatic'], grant_types:['client_credentials'],
-        token_endpoint_auth_method:'private_key_jwt', scope:'read_accounts create_opportunity'}}};
+        token_endpoint_auth_method:'private_key_jwt', token_endpoint_auth_signing_alg:'ES256',
+        scope:'read_accounts create_opportunity'}}};
   const jwt = await jws(BOOT.kp, header, payload);
   const [h,p,s] = jwt.split('.');
   const sig = Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')), c=>c.charCodeAt(0));
@@ -1056,8 +1058,7 @@ $('#bootToken').onclick = async () => {
       body: j({form:{
         grant_type:'client_credentials',
         client_assertion_type:'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-        client_assertion: assertion,
-        scope:'read_accounts create_opportunity'}})}).then(x=>x.json());
+        client_assertion: assertion}})}).then(x=>x.json());   // no explicit scope — the auto-provisioned client gets its default grant
     const ok = r.status===200;
     let detail;
     try { const b=JSON.parse(r.body); detail = ok ? `access_token issued — ${(b.access_token||'').length} chars, token_type ${b.token_type||'?'}, expires_in ${b.expires_in||'?'}` : (b.error_description||b.error||r.body); }
