@@ -1,0 +1,48 @@
+name: Deploy demo (Railway)
+
+# Push-to-deploy for the OIDF demo UI (pf-demo-ui):
+#   push to sd-jwt-rar-paz  -> deploy to STAGING
+#   push to main (via PR)   -> deploy to PRODUCTION
+# Only fires when the demo build context changes. The PF services are NOT deployed here — their build
+# context needs secrets (overlay/, *.lic, jars, data.zip) that aren't in git; deploy those with a local
+# `railway up` (see deploy/pingfederate/). Requires two repo secrets, each a Railway PROJECT token scoped
+# to the matching environment of project e02a8e2f:
+#   RAILWAY_TOKEN_STAGING   (staging)
+#   RAILWAY_TOKEN_PROD      (production)
+
+on:
+  push:
+    branches: [sd-jwt-rar-paz, main]
+    paths:
+      - "harness/ui/**"
+      - ".github/workflows/deploy-demo.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  staging:
+    if: github.ref == 'refs/heads/sd-jwt-rar-paz'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @railway/cli
+      - name: railway up → pf-demo-ui (staging)
+        working-directory: harness/ui
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+        run: railway up --ci --service pf-demo-ui
+
+  production:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm i -g @railway/cli
+      - name: railway up → pf-demo-ui (production)
+        working-directory: harness/ui
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PROD }}
+        run: railway up --ci --service pf-demo-ui
