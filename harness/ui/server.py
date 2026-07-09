@@ -34,11 +34,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # Override with PF_BASE/TOKEN_ENDPOINT/CONSOLE_URL for a different instance.
 PF_BASE = os.environ.get("PF_BASE", "https://localhost:19031/oidf").rstrip("/")
 CHALLENGE_URL = PF_BASE + "/federation/attestation-challenge"
-# Read-only list of clients the module registered into PingFederate (explicit + automatic).
-PF_CLIENTS_URL = PF_BASE + "/federation/registered-clients"
-# PF's OAuth token endpoint is at the runtime ROOT (not under the module's /oidf context).
 _origin = urllib.parse.urlsplit(PF_BASE)
 PF_ORIGIN = f"{_origin.scheme}://{_origin.netloc}"
+# Read-only list of clients the module registered into PingFederate (explicit + automatic). The
+# RegisteredClientsServlet is baked into pf-runtime.war at the ROOT context (like /as/token.oauth2),
+# NOT under the module's /oidf context — so build it from the origin, not PF_BASE (which carries /oidf).
+PF_CLIENTS_URL = os.environ.get("PF_CLIENTS_URL", PF_ORIGIN + "/federation/registered-clients")
+# PF's OAuth token endpoint is at the runtime ROOT (not under the module's /oidf context).
 TOKEN_ENDPOINT = os.environ.get("TOKEN_ENDPOINT", PF_ORIGIN + "/as/token.oauth2")
 # The `aud` a private_key_jwt client assertion must carry. PingFederate's native private_key_jwt validator
 # checks aud against PF's *configured* runtime base URL (not the request host / external proxy), so behind a

@@ -365,7 +365,11 @@
       <div id="bootPfClients" style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
           <p class="lab accent" style="margin:0">Clients registered in PingFederate</p>
-          <button id="bootPfRefresh" class="ghost" type="button">↻ Refresh</button>
+          <span class="row" style="gap:12px;align-items:center">
+            <a id="bootRawLink" href="#" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none;font-size:12px">↗ raw from PingFederate</a>
+            <a id="bootConsoleLink" href="#" target="_blank" rel="noopener" style="color:var(--acc);text-decoration:none;font-size:12px">↗ admin console</a>
+            <button id="bootPfRefresh" class="ghost" type="button">↻ Refresh</button>
+          </span>
         </div>
         <div id="bootPfList"><p class="hint">loading…</p></div>
       </div>
@@ -1111,7 +1115,8 @@ showView('deploy');
 
 fetch('/config').then(r=>r.json()).then(c=>{
   CFG=c; $('#cfgTag').textContent=c.pf_base;
-  if(c.console_url){ $('#consoleLink').href=c.console_url; }
+  if(c.console_url){ $('#consoleLink').href=c.console_url; const bc=$('#bootConsoleLink'); if(bc) bc.href=c.console_url; }
+  if(c.pf_clients_url){ const br=$('#bootRawLink'); if(br) br.href=c.pf_clients_url; }
   if(c.client_id){ $('#clientId').value=c.client_id; }
 });
 </script>
