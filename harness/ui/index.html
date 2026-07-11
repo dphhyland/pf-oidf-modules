@@ -368,17 +368,17 @@
   <!-- SPIFFE-attested instance: a SPIRE SVID becomes the client attestation's workload identity -->
   <section class="step open" id="spiffe" data-tab="deploy" style="margin-top:26px">
     <div class="hd"><span class="n" style="font-size:11px;font-weight:700">2</span>
-      <h2>Deploy an instance &amp; exchange it for a token</h2>
+      <h2>Deploy an instance — its two-tier identity (and why revoking the type denies it)</h2>
       <span class="s" id="spiffeStatus"></span></div>
     <div class="bd">
-      <p class="desc"><b>Phase 2 — the instance.</b> Deploy an <b>instance</b> of the type from Phase&nbsp;1. It mints its
-      <b>own local key</b> (the <code>cnf</code>/PoP key). <b>Authentication is the attestation</b>: the <b>type / attester
-      key signs</b> a Client Attestation that binds the instance's key via <code>cnf</code> — the type <b>vouches</b> for the
-      instance — and the <b>instance key signs the PoP</b>, proving possession. That two-key exchange is what authenticates
-      the client. Separately, a <b>SPIFFE agent</b> gives the instance a JWT-SVID; its <code>spiffe_id</code> + attributes
-      ride in the attestation's <code>workload</code> claim as <b>metadata</b> — <i>what / where the workload is</i>, for the
-      AS to authorize and selectively disclose on. The SPIFFE id itself does <b>not</b> authenticate. Walk it through in your
-      browser below, then run it on a real deployed workload.</p>
+      <p class="desc"><b>Phase 2 — the instance.</b> Phase 1 got the <i>type</i> a token; this phase is about the <b>instance</b> and
+      <b>how its identity is built</b> — not another token. Deploy an <b>instance</b> of the type: it mints its <b>own local key</b>
+      (the <code>cnf</code>/PoP key), the <b>type / attester key signs</b> a Client Attestation binding that key via <code>cnf</code>
+      (the type <b>vouches</b> for the instance), and the <b>instance key signs the PoP</b>. A <b>SPIFFE agent</b> gives the instance a
+      JWT-SVID whose <code>spiffe_id</code> + attributes ride in the attestation's <code>workload</code> claim as <b>metadata</b> —
+      <i>what / where the workload is</i> — which does <b>not</b> authenticate. The key point: <b>an instance has no standing of its
+      own — it borrows the type's</b>. So <b>revoke the type in Phase 1 and every instance is denied at once</b> (fleet revocation),
+      exactly what the ⑤ Revoke step above demonstrates. Walk the identity through in your browser, then on a real deployed workload.</p>
       <section class="diagram" style="margin:4px 0 14px">
         <svg viewBox="0 0 1000 240" role="img" aria-label="The attestation authenticates; SPIFFE rides along as metadata">
           <defs><marker id="ahs" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
@@ -489,7 +489,7 @@
         <button id="bootToken" disabled title="OpenID Federation §12.1 automatic registration: present the entity's private_key_jwt (carrying its trust chain) at the token endpoint; the TokenEndpointAutoRegistrationFilter provisions the client on the first hit, then the request authenticates — a token comes back with no prior registration call.">⚡ Get a token — §12.1 automatic registration</button>
         <button id="bootRegExplicit" disabled title="OpenID Federation §12.2 explicit registration: POST the entity's self-signed configuration to PingFederate's /federation/register; PF validates the trust chain, provisions the client up front, and returns a signed explicit-registration-response+jwt — registration only, no token issued.">📄 Explicit register — §12.2</button>
         <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
-        <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
+        <button id="bootDereg" class="ghost" disabled title="Revoke: delete the entity's subordinate statement at the trust controller. /resolve stops chaining it immediately (the newer go-oidfed image wipes the resolve cache on the mutation), so the next token exchange fails — every deployed instance of this type is denied at once. ③ re-enrols to restore.">⑤ Revoke — withdraw trust</button>
         <button id="bootReset" class="ghost" type="button" style="margin-left:auto">↺ Reset — clear demo entities</button>
       </div>
       <div id="bootFed" style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
@@ -1266,25 +1266,28 @@ $('#bootAuthz').onclick = () => {
 };
 
 $('#bootDereg').onclick = async () => {
-  setStatus('#bootStatus','deregistering…');
+  setStatus('#bootStatus','revoking — deleting the subordinate at the trust controller…');
   const r = await fetch('/api/deregister',{method:'POST',headers:{'Content-Type':'application/json'},
     body:j({entity_id:BOOT.entityId})}).then(x=>x.json());
   const after = await bootResolve();
   $('#bootOutEnroll').insertAdjacentHTML('beforeend', `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-    <p class="lab accent">Suspension — the record is withdrawn</p>
+    <p class="lab accent">Revoked — the federation withdraws trust</p>
     <p style="margin:6px 0">
-      <span class="pill ${r.deregistered?'ok':'err'}">${r.deregistered?'✓ controller record deleted':'✗ deregister failed'}</span>
-      ${bootResolvePill(after, 'after deregistration')}
+      <span class="pill ${r.deregistered?'ok':'err'}">${r.deregistered?'✓ subordinate deleted at the trust controller':'✗ revoke failed'}</span>
+      ${bootResolvePill(after, 'after revocation')}
     </p>
-    <p class="hint">The entity configuration is <b>still served</b> and still validly self-signed — but the federation no
-    longer vouches for it, so the chain to the anchor is gone. Run ④ again: the AS gate now rejects it as
-    “exists but not enrolled”. ③ re-enrols it.</p>
+    <p class="hint">The entity configuration is <b>still served</b> and still validly self-signed — but the anchor deleted its
+    subordinate statement, so <code>/resolve</code> no longer builds a chain (the controller wipes its resolve cache on the
+    change — this takes effect <b>immediately</b>). <b>Every deployed instance of this type is denied at once.</b> Watch the
+    token exchange below fail now — then <b>③ re-enrols</b> to restore trust and the token works again.</p>
   </div>`);
-  setStatus('#bootStatus','suspended — record withdrawn');
+  setStatus('#bootStatus','revoked — verifying the token exchange now fails…');
   bootStage(2);
   $('#bootEnroll').disabled = false;
   const s=$('#faClient'); if(s && s.value===BOOT.entityId && document.querySelector('#faOut').innerHTML) faCheck();
   loadFederation();
+  // Demonstrate the payoff: the SAME token exchange that worked a moment ago now fails (chain unresolved).
+  if($('#bootToken') && !$('#bootToken').disabled){ await new Promise(r=>setTimeout(r,600)); $('#bootToken').click(); }
 };
 
 // Federation membership — the live subordinate list the trust controller holds.
