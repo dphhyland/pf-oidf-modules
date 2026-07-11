@@ -1,0 +1,4 @@
+# The client_attestation_sdk (incl. the SPIFFE bridge) lives in the separate polyglot SDK repo and is
+# vendored in at deploy time — NOT committed here. See README.
+client_attestation_sdk/
+__pycache__/
