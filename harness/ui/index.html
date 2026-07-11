@@ -81,6 +81,14 @@
   .pcard .pn{font:11px var(--mono);color:var(--acc);font-weight:700}
   .pcard h3{font-size:14px;margin:2px 0 6px;font-weight:600;color:var(--ink)}
   .lead{font-size:15px;line-height:1.6;color:var(--ink);margin:0 0 4px}
+  .ptable{width:100%;border-collapse:collapse;font-size:13px;margin:12px 0}
+  .ptable th,.ptable td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  .ptable th{color:var(--mut);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .ptable th:first-child{width:130px}
+  .ptable td:first-child{color:var(--acc);font-weight:600}
+  .ptable tr:last-child td{border-bottom:0}
+  @media(max-width:720px){.ptable,.ptable tbody,.ptable tr,.ptable td,.ptable th{display:block;width:auto}
+    .ptable thead{display:none} .ptable td{border:0;padding:2px 0} .ptable tr{border-bottom:1px solid var(--line);padding:8px 0}}
 </style>
 </head>
 <body>
@@ -236,6 +244,36 @@
       </div>
       <p class="hint">Phase ① is the client-authentication draft; phase ② is OpenID Federation resolution + policy. Revocation
       lives entirely in phase ② — which is why it bites on the very next call.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>RAR here is an <i>entitlement constraint</i>, not a request — a profile of the attestation</h2></div>
+    <div class="bd">
+      <p class="desc">We use Rich Authorization Requests (<code>authorization_details</code>, RFC&nbsp;9396) — but in a specific
+      way worth calling out, because it inverts <b>where the details come from</b> and <b>where they bite</b>.</p>
+      <p class="lead" style="margin:0 0 6px">The <code>authorization_details</code> ride <b>inside the client attestation,
+      signed by the attester</b>. They aren't something the client asks for and a user consents to — they're an explicit,
+      attester-vouched <b>entitlement the client already holds</b>, and the AS applies them as a <b>ceiling on the grant at
+      issuance</b>. RAR becomes an <b>extension / profile of the attestation</b>, not a request on the wire.</p>
+      <table class="ptable">
+        <thead><tr><th></th><th>Standard RAR · RFC 9396 (user · RP · AS)</th><th>This profile · attested entitlement</th></tr></thead>
+        <tbody>
+          <tr><td>Who brings it</td><td>the <b>client requests</b> it (PAR / authorization request)</td><td>the <b>attester signs</b> it into the client attestation</td></tr>
+          <tr><td>What it is</td><td>a <b>request</b> for authority, to be granted</td><td>an entitlement the client <b>already holds</b> — a signed ceiling</td></tr>
+          <tr><td>Authorised by</td><td>the <b>resource owner consents</b> (or AS policy)</td><td>the <b>attester vouches</b> — federation-resolved, no per-request human</td></tr>
+          <tr><td>Where it bites</td><td>the <b>Protected Resource enforces</b> the granted details, at call time</td><td>the <b>AS filters</b> the grant at <b>issuance</b> — an <b>instance-level</b> ceiling</td></tr>
+          <tr><td>Shape</td><td>requested up → granted → enforced <i>down</i> at the RS</td><td>attested <b>with</b> the client → filters the grant <i>at</i> the AS</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Concretely, the attestation carries <code>authorization_details: [{ "type":"sales_agent",
+      "actions":[…], "locations":[…], "sales_regions":["EMEA"], "privileges":[…] }]</code>. The <b>type</b> names the
+      entitlement schema; its fields are the explicit constraint. The attester vouches for it, and the token's authority is
+      granted <b>⊆ the attested entitlement</b> — an <b>instance filter</b> at the token endpoint, per instance, rather than
+      policy re-evaluated later at each Protected Resource.</p>
+      <p class="hint"><b>Two distinct layers — don't merge them.</b> This attested RAR is the agent's <b>entitlement envelope</b>
+      — <i>what</i> this type is allowed to do. <i>On whose behalf</i> it acts is separate: the <code>act</code> claim
+      (RFC&nbsp;8693 token exchange) carries the principal → agent actor chain — <b>delegation, never impersonation</b>. One says
+      what the agent may do; the other says whom it does it for.</p>
     </div>
   </section>
   <section class="step open" data-tab="principles">
