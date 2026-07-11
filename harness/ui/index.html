@@ -92,9 +92,9 @@
     <button class="tab" data-view-btn="deploy" type="button">① Deployment flow</button>
     <button class="tab" data-view-btn="authz" type="button">② Authentication &amp; authorization</button>
   </nav>
-  <p class="muted" data-tab="deploy">Day&nbsp;0 — how a client is <b>born into the federation</b>: mint its entity key,
-  self-sign its entity configuration, and register its public key with the trust controller. This happens once, at
-  deployment, and is what makes the client a resolvable federation entity before any token flow is possible.</p>
+  <p class="muted" data-tab="deploy">The agent lifecycle, end to end. <b>Phase&nbsp;1</b>: create an agent <b>type</b> and
+  register it as a federation entity (once). <b>Phase&nbsp;2</b>: deploy an <b>instance</b> of it that authenticates with a
+  client attestation and gets a token. The concept below frames the two-tier model; each step then runs live.</p>
   <p class="muted" data-tab="authz">This drives the <b>live</b> PingFederate instance through a local proxy. Each step shows exactly what
   the client does: mint keys, get a one-time challenge from the <code>ClientAttestationChallengeServlet</code>, build the
   attestation &amp; proof JWTs, and call the token endpoint — then how the AS <b>authorizes</b> the resolved client entity.</p>
@@ -367,101 +367,99 @@
 
   <!-- SPIFFE-attested instance: a SPIRE SVID becomes the client attestation's workload identity -->
   <section class="step open" id="spiffe" data-tab="deploy" style="margin-top:26px">
-    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">◆</span>
-      <h2>SPIFFE-attested instance — a SPIRE SVID becomes the attestation's workload identity</h2>
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">2</span>
+      <h2>Deploy an instance &amp; exchange it for a token</h2>
       <span class="s" id="spiffeStatus"></span></div>
     <div class="bd">
-      <p class="desc"><b>Two-layer identity, live.</b> The agent <b>type</b> is registered as a federation entity in Day&nbsp;0
-      below. Here we deploy an <b>instance</b> and a <b>SPIFFE agent</b> (the SPIRE-agent Workload API) attests it by selector
-      match and mints a <b>JWT-SVID</b> (<code>sub = spiffe://…</code>). That SVID's identity + attested attributes are
-      <b>dropped into the Client Attestation's <code>workload</code> claim</b> (<code>to_workload_claim</code>); the
-      type/attester key signs it and it goes to PingFederate. SPIFFE says <i>what/where the workload is</i>; the OIDF
-      attestation says <i>this federation member may get a token disclosing it</i>. Runs in your browser — a faithful
-      stand-in for <code>client_attestation_sdk/spiffe.py</code>'s <code>SpiffeAgent</code>.</p>
+      <p class="desc"><b>Phase 2 — the instance.</b> Deploy an <b>instance</b> of the type from Phase&nbsp;1. It mints its
+      <b>own local key</b> (the <code>cnf</code>/PoP key). <b>Authentication is the attestation</b>: the <b>type / attester
+      key signs</b> a Client Attestation that binds the instance's key via <code>cnf</code> — the type <b>vouches</b> for the
+      instance — and the <b>instance key signs the PoP</b>, proving possession. That two-key exchange is what authenticates
+      the client. Separately, a <b>SPIFFE agent</b> gives the instance a JWT-SVID; its <code>spiffe_id</code> + attributes
+      ride in the attestation's <code>workload</code> claim as <b>metadata</b> — <i>what / where the workload is</i>, for the
+      AS to authorize and selectively disclose on. The SPIFFE id itself does <b>not</b> authenticate. Walk it through in your
+      browser below, then run it on a real deployed workload.</p>
       <section class="diagram" style="margin:4px 0 14px">
-        <svg viewBox="0 0 1000 176" role="img" aria-label="SPIFFE SVID into the client attestation">
+        <svg viewBox="0 0 1000 240" role="img" aria-label="The attestation authenticates; SPIFFE rides along as metadata">
           <defs><marker id="ahs" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
-          <text class="zlabel" x="150" y="34">INFRASTRUCTURE IDENTITY (SPIFFE)</text>
-          <text class="zlabel" x="662" y="34">FEDERATION IDENTITY (OIDF) → AS</text>
-          <g class="node active"><rect x="34" y="52" width="212" height="86" rx="8"/>
-            <text class="t1" x="140" y="82">SPIFFE agent</text>
-            <text class="t2" x="140" y="100">SPIRE Workload API</text>
-            <text class="t2" x="140" y="116">attests instance by selectors</text></g>
-          <g class="node active"><rect x="300" y="52" width="212" height="86" rx="8"/>
-            <text class="t1" x="406" y="82">JWT-SVID</text>
-            <text class="t2" x="406" y="100">sub = spiffe://banking.demo/…</text>
-            <text class="t2" x="406" y="116">signed by the trust domain</text></g>
-          <g class="node active"><rect x="566" y="52" width="234" height="86" rx="8"/>
-            <text class="t1" x="683" y="80">Client Attestation</text>
-            <text class="t2" x="683" y="98">workload = to_workload_claim(svid)</text>
-            <text class="t2" x="683" y="114">type/attester key signs · cnf = instance</text></g>
-          <g class="node active"><rect x="854" y="52" width="120" height="86" rx="8"/>
-            <text class="t1" x="914" y="90">PingFederate</text>
-            <text class="t2" x="914" y="108">the AS</text></g>
-          <g class="edge active"><path class="flow" d="M246,95 L300,95" marker-end="url(#ahs)"/><text class="lbl" x="273" y="86">issue</text></g>
-          <g class="edge active"><path class="flow" d="M512,95 L566,95" marker-end="url(#ahs)"/><text class="lbl" x="539" y="86">drop in</text></g>
-          <g class="edge active"><path class="flow" d="M800,95 L854,95" marker-end="url(#ahs)"/><text class="lbl" x="827" y="86">present</text></g>
+          <text class="zlabel" x="140" y="28">AUTHENTICATION — two keys</text>
+          <text class="zlabel" x="482" y="28">THE CLIENT ATTESTATION</text>
+          <g class="node active"><rect x="36" y="44" width="208" height="52" rx="8"/>
+            <text class="t1" x="140" y="68">Type / attester key</text>
+            <text class="t2" x="140" y="85">signs the attestation — vouches</text></g>
+          <g class="node active"><rect x="36" y="120" width="208" height="52" rx="8"/>
+            <text class="t1" x="140" y="144">Instance key · local</text>
+            <text class="t2" x="140" y="161">bound as cnf · signs the PoP</text></g>
+          <g class="node active"><rect x="312" y="56" width="342" height="104" rx="8"/>
+            <text class="t1" x="483" y="80">Client Attestation + PoP</text>
+            <text class="t2" x="483" y="100">cnf = instance key · entity-signed → the AUTH</text>
+            <text class="t2" x="483" y="118">PoP proves possession of cnf</text>
+            <text class="t2" x="483" y="140">workload = spiffe_id + attrs — metadata</text></g>
+          <g class="node active"><rect x="716" y="74" width="150" height="70" rx="8"/>
+            <text class="t1" x="791" y="104">PingFederate</text>
+            <text class="t2" x="791" y="122">verifies → token</text></g>
+          <g class="node"><rect x="312" y="182" width="342" height="44" rx="8"/>
+            <text class="t1" x="483" y="201">SPIFFE agent → JWT-SVID</text>
+            <text class="t2" x="483" y="217">spiffe://banking.demo/… — infra identity</text></g>
+          <g class="edge active"><path class="flow" d="M244,72 L312,92" marker-end="url(#ahs)"/><text class="lbl" x="280" y="68">signs</text></g>
+          <g class="edge active"><path class="flow" d="M244,146 L312,128" marker-end="url(#ahs)"/><text class="lbl" x="280" y="152">cnf · PoP</text></g>
+          <g class="edge active"><path class="flow" d="M654,108 L716,108" marker-end="url(#ahs)"/><text class="lbl" x="685" y="99">present</text></g>
+          <g class="edge"><path class="flow dash" d="M483,182 L483,160" marker-end="url(#ahs)"/><text class="lbl" x="576" y="174">→ workload (metadata)</text></g>
         </svg>
-        <div class="cap">The SPIFFE agent attests the instance's selectors and mints a JWT-SVID for its <code>spiffe://</code>
-          identity. <code>to_workload_claim(svid)</code> turns it into the attestation's <code>workload</code> claim —
-          carrying the <code>spiffe_id</code>, the attested attributes, <i>and the SVID itself</i> so the AS can verify the
-          SPIFFE signature independently. The type key signs the attestation; the instance key signs the PoP.</div>
+        <div class="cap"><b>The attestation authenticates — and it's the two keys that do it:</b> the <b>type / attester key
+          signs</b> the attestation (binding the instance's key as <code>cnf</code>, vouching for it), and the <b>instance
+          key signs the PoP</b> (proving possession). The <b>SPIFFE SVID is not part of authentication</b> — its
+          <code>spiffe_id</code> + attributes ride in the <code>workload</code> claim as metadata the AS can authorize and
+          selectively disclose on.</div>
       </section>
+      <p class="lab accent" style="margin:14px 0 6px">Walk it through — in your browser</p>
       <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
         <label class="opt" style="flex-direction:column;align-items:flex-start;gap:4px">agent type
           <select id="spiffeType" class="sel" style="min-width:320px">
             <option value="payment-agent">payment-agent — spiffe://banking.demo/payment-agent</option>
             <option value="origination-agent">origination-agent — spiffe://banking.demo/origination-agent</option>
           </select></label>
-        <button id="spiffeRun">▶ Run — issue SVID, attest, present to PingFederate</button>
+        <button id="spiffeRun">▶ Run — mint SVID, build the attestation, present to PingFederate</button>
       </div>
       <div id="spiffeOut"></div>
-    </div>
-  </section>
-
-  <!-- Remote agent workload: a real deployed service, watched + remotely invoked -->
-  <section class="step open" id="remote" data-tab="deploy" style="margin-top:26px">
-    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">⬢</span>
-      <h2>Remote agent workload — a real deployed service you invoke live</h2>
-      <span class="s" id="remoteStatus"></span></div>
-    <div class="bd">
-      <p class="desc">Everything above ran in your browser. This is a <b>real agent workload deployed as its own service</b>
-      at <code id="remoteUrl">…</code>. On boot it attests itself via the SPIFFE agent and obtains its JWT-SVID; here you
-      <b>remotely invoke</b> it — it builds the SPIFFE-attested Client Attestation <b>server-side</b> and presents it to
-      PingFederate, returning what happened. Same <code>client_attestation_sdk</code> + <code>spiffe.py</code> bridge, for
-      real, over the network.</p>
-      <div class="row" style="gap:12px;margin-bottom:8px">
-        <button id="remoteProbe" class="ghost">↻ Check workload identity</button>
-        <button id="remoteInvoke">▶ Invoke remotely — run the token exchange</button>
+      <div style="margin-top:18px;border-top:1px solid var(--line);padding-top:14px">
+        <p class="lab accent" style="margin:0 0 4px">…or run it on a real deployed workload <span class="s" id="remoteStatus"></span></p>
+        <p class="desc" style="margin:0 0 8px">A <b>real agent workload</b> deployed as its own service at
+        <code id="remoteUrl">…</code> — it self-attests via the SPIFFE agent on boot and runs the whole exchange
+        <b>server-side</b>, then returns what happened. Same <code>client_attestation_sdk</code> + <code>spiffe.py</code>, over the network.</p>
+        <div class="row" style="gap:12px;margin-bottom:8px">
+          <button id="remoteProbe" class="ghost">↻ Check workload identity</button>
+          <button id="remoteInvoke">▶ Invoke remotely — run the token exchange</button>
+        </div>
+        <div id="remoteOut"></div>
       </div>
-      <div id="remoteOut"></div>
     </div>
   </section>
 
-  <!-- Day-0 bootstrap: deploy a client & enroll its entity key in the federation -->
+  <!-- Phase 1 (create + register the type) — #boot — is above; Phase 2 (instance + token) follows it -->
   <section class="step open" id="boot" data-tab="deploy" style="margin-top:26px">
-    <div class="hd"><span class="n" style="font-size:10px;font-weight:700">0</span>
-      <h2>Day 0 — bootstrap: deploy a client and enroll its entity key</h2><span class="s" id="bootStatus"></span></div>
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">1</span>
+      <h2>Create the agent type &amp; register it in the federation</h2><span class="s" id="bootStatus"></span></div>
     <div class="bd">
-      <p class="desc">Before any flow above can happen the client must be <b>born into the federation</b>. At deployment an
-      <b>entity key</b> is created <i>at the entity</i> — not the per-instance key of step&nbsp;1 (that one only proves
-      possession via the attestation's <code>cnf</code>). The entity key <b>self-signs the entity configuration</b> served at
-      <code>/.well-known/openid-federation</code>, and its <b>public half becomes the record in the federation controller</b>:
-      the anchor-signed subordinate statement binding <code>entity_id → public key</code>. The private key never leaves the
-      entity — here it is generated in <b>your browser</b> and stays there; only the public JWK and the signed statement go
-      out. Everything below is <b>live</b>: real keygen, a real registration in the trust controller, a real <code>/resolve</code>.</p>
+      <p class="desc"><b>Phase 1 — the type.</b> An agent <b>type</b> is a federation <b>entity</b>. Mint its
+      <b>entity / attester key</b> (the key that will <i>vouch for</i> every instance), <b>self-sign</b> its entity
+      configuration (served at <code>/.well-known/openid-federation</code>), and <b>register</b> it in the trust controller —
+      the anchor signs a subordinate statement binding <code>entity_id → public key</code>, so the type now chains to the
+      anchor. This is the <i>type's</i> key, created once; it is <b>not</b> the per-instance key (that comes in Phase 2). The
+      private key never leaves the entity — here it is generated in <b>your browser</b>; only the public JWK and the signed
+      statement go out. Everything below is <b>live</b>: real keygen, a real registration, a real <code>/resolve</code>.</p>
       <section class="diagram" style="margin:4px 0 14px" id="bootDiag">
         <svg viewBox="0 0 1000 250" role="img" aria-label="Client bootstrap flow">
           <defs><marker id="ah3" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
           <rect class="zone" x="16" y="54" width="340" height="170" rx="12"/>
           <rect class="zone" x="724" y="54" width="260" height="170" rx="12"/>
-          <text class="zlabel" x="186" y="44">THE NEW CLIENT — DEPLOYED INSTANCE</text>
+          <text class="zlabel" x="186" y="44">THE AGENT TYPE — its entity key</text>
           <text class="zlabel" x="854" y="44">OPENID FEDERATION TRUST CONTROLLER</text>
           <g class="edge" data-bs="2"><path class="flow" d="M336,146 L396,146" marker-end="url(#ah3)"/><text class="lbl" x="366" y="136">② publish</text></g>
           <g class="edge" data-bs="3"><path class="flow" d="M300,110 C480,30 640,30 806,84" marker-end="url(#ah3)"/><text class="lbl" x="548" y="46">③ register public JWK — the controller record</text></g>
           <g class="edge" data-bs="4"><path class="flow dash" d="M744,160 L684,160" marker-end="url(#ah3)"/><text class="lbl" x="714" y="182">④ /resolve fetches</text><text class="lbl" x="714" y="196">+ verifies the chain</text></g>
           <g class="node" data-bs="1,2,3"><rect x="36" y="110" width="300" height="72" rx="8"/>
-            <text class="t1" x="186" y="138">Entity key — created at deploy</text>
+            <text class="t1" x="186" y="138">Entity / attester key — the type's key</text>
             <text class="t2" x="186" y="156">EC P-256 · generated in your browser</text>
             <text class="t2" x="186" y="170">private key never leaves this page</text></g>
           <g class="node" data-bs="2,3,4"><rect x="396" y="110" width="288" height="72" rx="8"/>
@@ -480,15 +478,15 @@
         self-signed configuration and verifies it against the key in its record.</div>
       </section>
       <div class="row" style="margin-bottom:12px">
-        <label class="opt">entity name
-          <input id="bootSlug" value="rp-boot" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px;font:12px var(--mono);width:140px"></label>
+        <label class="opt">agent type name
+          <input id="bootSlug" value="payment-agent" style="background:#0b0f14;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px;font:12px var(--mono);width:150px"></label>
         <span class="kv">entity_id <b><code id="bootEid"></code></b></span>
       </div>
       <div class="row">
-        <button id="bootGen">① Deploy — mint entity key</button>
+        <button id="bootGen">① Mint the entity / attester key</button>
         <button id="bootSign" disabled>② Self-sign entity configuration</button>
-        <button id="bootEnroll" disabled>③ Enroll in the trust controller</button>
-        <button id="bootToken" class="ghost" disabled title="Present the entity's private_key_jwt (carrying its trust chain) at PingFederate's token endpoint — no /federation/register call">⚡ Get a token — automatic registration</button>
+        <button id="bootEnroll" disabled>③ Register in the trust controller</button>
+        <button id="bootToken" class="ghost" disabled title="Alternative path: present the entity's private_key_jwt (carrying its trust chain) at PingFederate's token endpoint — federation auto-registration, no client attestation">⚡ alt: token via auto-registration (no attestation)</button>
         <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
         <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
         <button id="bootReset" class="ghost" type="button" style="margin-left:auto">↺ Reset — clear demo entities</button>
@@ -1414,6 +1412,10 @@ function showView(v){
 }
 document.querySelectorAll('[data-view-btn]').forEach(b=>b.onclick=()=>showView(b.dataset.viewBtn));
 showView('deploy');
+
+// Deployment story order: Phase 1 (create + register the type) precedes Phase 2 (deploy instance + token).
+(function(){ const boot=$('#boot'), spiffe=$('#spiffe');
+  if(boot && spiffe && (boot.compareDocumentPosition(spiffe) & Node.DOCUMENT_POSITION_PRECEDING)) boot.after(spiffe); })();
 
 fetch('/config').then(r=>r.json()).then(c=>{
   CFG=c; $('#cfgTag').textContent=c.pf_base;
