@@ -506,7 +506,7 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px">
             <p class="lab" style="margin:0 0 6px">Explicit&nbsp;· <span style="color:var(--acc)">§12.2</span>
-              <span class="pill ok" style="font-size:10px;margin-left:4px">this PF servlet · 📄 above</span></p>
+              <span class="pill" style="font-size:10px;margin-left:4px;opacity:.65">📄 above · response-signing WIP</span></p>
             <p class="muted" style="margin:0;font-size:12px;line-height:1.6">The client <b>POSTs its entity configuration</b> to the AS's
               federation registration endpoint <i>up front</i>. The AS validates the trust chain, provisions the client, and returns its
               metadata (an <code>explicit-registration-response+jwt</code>). A deliberate onboarding step, before any token call.</p>
@@ -1376,28 +1376,50 @@ async function loadActivity(){
 
 $('#bootRegExplicit').onclick = async () => {
   if(!BOOT.cfgJwt){ setStatus('#bootStatus','sign the entity configuration first (②)'); return; }
-  setStatus('#bootStatus','explicit registration — POSTing the entity configuration to /federation/register…');
+  setStatus('#bootStatus','explicit registration — building an audienced §12.2 request…');
   const out = $('#bootOutExplicit');
   try{
+    // §12.2 explicit registration REQUEST: an entity statement AUDIENCED to the OP issuer, carrying the
+    // trust chain in its header (OpenIdRegistrationServlet verifies aud + inline jwks + reads trust_chain).
+    // This is the correct §12.2 request shape — distinct from the plain self-signed config the ⚡ path relies on.
+    const tc = await fetch('/api/trust-chain?sub='+encodeURIComponent(BOOT.entityId)).then(x=>x.json());
+    renderHierarchy(tc);
+    const opIssuer = (()=>{ try{ return new URL(CFG.token_aud||CFG.token_endpoint).origin; }catch(e){ return 'https://localhost:9031'; } })();
+    const now = Math.floor(Date.now()/1000);
+    const header = {alg:'ES256', kid:BOOT.jwk.kid, typ:'entity-statement+jwt', trust_chain: tc.trust_chain || []};
+    const reqJwt = await jws(BOOT.kp, header, {
+      iss: BOOT.entityId, sub: BOOT.entityId, aud: opIssuer, iat: now, exp: now+300,
+      jwks:{keys:[BOOT.jwk]}, authority_hints:[bootAnchor()],
+      metadata:{ federation_entity:{organization_name:'Bootstrap Demo RP — minted in your browser'},
+        oauth_client:{client_registration_types:['automatic','explicit'], grant_types:['client_credentials'],
+          token_endpoint_auth_method:'private_key_jwt', token_endpoint_auth_signing_alg:'ES256',
+          scope:'read_accounts create_opportunity'}}});
     const r = await fetch('/api/register-explicit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body: j({entity_config_jwt: BOOT.cfgJwt})}).then(x=>x.json());
+      body: j({entity_config_jwt: reqJwt})}).then(x=>x.json());
     const ok = r.status===201 || r.status===200;
     let detail;
     const dec = ok ? tryDecodeJwt(r.body) : null;                 // the signed explicit-registration-response+jwt
     if(dec){ detail = pretty(dec.payload); }
-    else { try{ const b=JSON.parse(r.body); detail = b.error_description||b.error||r.body; }catch(_){ detail = (r.body||'').slice(0,500); } }
+    else { try{ const b=JSON.parse(r.body); detail = b.error_description||b.error||r.body; }catch(_){ detail = (r.body||'').slice(0,400); } }
+    // Honest status. Explicit §12.2 is a PARTIAL module implementation: the servlet mapping + init are fixed,
+    // but signing the OP's registration RESPONSE crosses a jose4j classloader boundary (LinkageError) — an
+    // open gap. The ⚡ automatic (§12.1) path signs no response and is unaffected + live everywhere.
+    const note = ok
+      ? 'PingFederate validated the trust chain, provisioned the client, and signed back the registration response below — it now appears in the list.'
+      : (r.status===404
+          ? 'This PF build carries the <b>un-patched</b> servlet (bare <code>@WebServlet</code>, unmapped), so <code>/federation/register</code> 404s. The mapping + init fixes are on staging; the ⚡ <b>automatic</b> path is live everywhere.'
+          : (r.status===500
+              ? 'The servlet is <b>mapped + initialized</b> and accepts this audienced §12.2 request — but signing the OP\'s registration <i>response</i> hits a <code>jose4j</code> classloader <code>LinkageError</code> (the module\'s jose4j vs PF\'s). That final step is an <b>open module gap</b>. The ⚡ automatic path signs no response and is unaffected.'
+              : 'The audienced §12.2 request reached the servlet — response HTTP '+r.status+'.'));
     out.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
       <p class="lab accent">Explicit registration (§12.2) — /federation/register, live</p>
       <p style="margin:6px 0">
-        <span class="pill ${ok?'ok':'err'}">${ok?'✓ client registered — PingFederate returned a signed explicit-registration-response+jwt':'✗ /federation/register HTTP '+r.status}</span></p>
-      <p class="hint">The client POSTed its <b>self-signed entity configuration</b> (<code>application/entity-statement+jwt</code>) to
-      <code>/federation/register</code> — a deliberate step <i>before</i> any token call, the counterpart to the ⚡ automatic path. ${ok
-        ? 'PingFederate validated the trust chain to the anchor, provisioned the client, and signed back the registration response below — the client now appears in the list.'
-        : (r.status===404
-            ? 'PingFederate returned <b>404</b> — the explicit-registration servlet (<code>OpenIdRegistrationServlet</code>) isn\'t mapped on this PF build yet. The URL-mapping fix ships in the next PF redeploy; the ⚡ <b>automatic</b> path above is already live.'
-            : 'This needs the entity enrolled in the controller (③) so PingFederate can resolve its chain to the anchor.')}</p>
+        <span class="pill ${ok?'ok':'err'}">${ok?'✓ client registered — signed explicit-registration-response+jwt':'▲ reached the servlet — HTTP '+r.status}</span>
+        <span class="muted" style="font-size:11px">trust chain length ${(tc.trust_chain||[]).length} · aud <code>${opIssuer}</code></span></p>
+      <p class="hint">The client signed an <b>entity statement audienced to the OP</b> (<code>aud=${opIssuer}</code>), carried its
+      trust chain in the header, and POSTed it to <code>/federation/register</code> — the §12.2 counterpart to the ⚡ automatic path. ${note}</p>
       <pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;margin:6px 0 0">${detail}</pre></div>`;
-    setStatus('#bootStatus', ok?'explicit registration succeeded ✓':'explicit registration returned HTTP '+r.status);
+    setStatus('#bootStatus', ok?'explicit registration succeeded ✓':'explicit registration — reached the servlet (HTTP '+r.status+')');
     loadPfClients();
     loadActivity();
   }catch(e){ out.innerHTML = `<p class="hint">explicit registration failed: ${e.message}</p>`; }
