@@ -874,8 +874,10 @@ async function runSpiffe(){
     push(artBlock('③ Client Attestation — the SVID dropped into <code>workload</code>, signed by the type/attester key', attestation, {header:attHeader, payload:attPayload}));
     // PoP signed by the instance key
     const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
+    // PoP aud must match PF's configured base (https://localhost:9031), not the public railway URL (the aud/TCP-proxy trap).
+    const popAud = (()=>{ try{ return new URL(CFG.token_aud||CFG.token_endpoint).origin; }catch(e){ return 'https://localhost:9031'; } })();
     const proof = await jws(instanceKey, {alg:'ES256', typ:'oauth-client-attestation-pop+jwt', kid:'instance-1'},
-                            {iss:clientId, aud:CFG.token_endpoint, jti, iat:now});
+                            {iss:clientId, aud:popAud, jti, iat:now});
     // ④ present to PingFederate
     push(`<p class="lab accent" style="margin-top:14px">④ Present to PingFederate — <code>OAuth-Client-Attestation</code> + <code>-PoP</code></p>`);
     const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
