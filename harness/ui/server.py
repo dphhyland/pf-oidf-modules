@@ -40,6 +40,10 @@ PF_ORIGIN = f"{_origin.scheme}://{_origin.netloc}"
 # RegisteredClientsServlet is baked into pf-runtime.war at the ROOT context (like /as/token.oauth2),
 # NOT under the module's /oidf context — so build it from the origin, not PF_BASE (which carries /oidf).
 PF_CLIENTS_URL = os.environ.get("PF_CLIENTS_URL", PF_ORIGIN + "/federation/registered-clients")
+# OpenID Federation §12.2 explicit registration endpoint (OpenIdRegistrationServlet, ROOT context).
+# The client POSTs its self-signed entity configuration; PF validates the chain, registers the client,
+# and returns a signed explicit-registration-response+jwt.
+REGISTER_URL = os.environ.get("REGISTER_URL", PF_ORIGIN + "/federation/register")
 # PF's OAuth token endpoint is at the runtime ROOT (not under the module's /oidf context).
 TOKEN_ENDPOINT = os.environ.get("TOKEN_ENDPOINT", PF_ORIGIN + "/as/token.oauth2")
 # The `aud` a private_key_jwt client assertion must carry. PingFederate's native private_key_jwt validator
@@ -572,6 +576,20 @@ class Handler(BaseHTTPRequestHandler):
             headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
             status, body, hdrs = pf_post(TOKEN_ENDPOINT, data=data, headers=headers)
             self._send(200, json.dumps({"status": status, "body": body}))
+        elif self.path == "/api/register-explicit":
+            # OpenID Federation §12.2 explicit registration: the client POSTs its self-signed entity
+            # configuration to PF's /federation/register with media type application/entity-statement+jwt.
+            # PF validates the trust chain to the anchor, provisions the client, and returns a signed
+            # explicit-registration-response+jwt (HTTP 201). No token is issued here — registration only.
+            payload = json.loads(raw or b"{}")
+            cfg_jwt = (payload.get("entity_config_jwt") or "").strip()
+            if not cfg_jwt:
+                self._send(200, json.dumps({"status": 0, "body": "entity_config_jwt is required"}))
+                return
+            status, body, hdrs = pf_post(REGISTER_URL, data=cfg_jwt.encode(),
+                                         headers={"Content-Type": "application/entity-statement+jwt"})
+            self._send(200, json.dumps({"status": status, "body": body,
+                                        "content_type": hdrs.get("Content-Type", "")}))
         elif self.path == "/api/enroll":
             try:
                 payload = json.loads(raw or b"{}")

@@ -486,7 +486,8 @@
         <button id="bootGen">① Mint the entity / attester key</button>
         <button id="bootSign" disabled>② Self-sign entity configuration</button>
         <button id="bootEnroll" disabled>③ Register in the trust controller</button>
-        <button id="bootToken" class="ghost" disabled title="Alternative path: present the entity's private_key_jwt (carrying its trust chain) at PingFederate's token endpoint — federation auto-registration, no client attestation">⚡ alt: token via auto-registration (no attestation)</button>
+        <button id="bootToken" disabled title="OpenID Federation §12.1 automatic registration: present the entity's private_key_jwt (carrying its trust chain) at the token endpoint; the TokenEndpointAutoRegistrationFilter provisions the client on the first hit, then the request authenticates — a token comes back with no prior registration call.">⚡ Get a token — §12.1 automatic registration</button>
+        <button id="bootRegExplicit" disabled title="OpenID Federation §12.2 explicit registration: POST the entity's self-signed configuration to PingFederate's /federation/register; PF validates the trust chain, provisions the client up front, and returns a signed explicit-registration-response+jwt — registration only, no token issued.">📄 Explicit register — §12.2</button>
         <button id="bootAuthz" class="ghost" disabled>④ Authorize at the AS gate ↓</button>
         <button id="bootDereg" class="ghost" disabled>⑤ Deregister — suspend</button>
         <button id="bootReset" class="ghost" type="button" style="margin-left:auto">↺ Reset — clear demo entities</button>
@@ -497,6 +498,31 @@
           <button id="bootRefresh" class="ghost" type="button">↻ Refresh</button>
         </div>
         <div id="bootFedList"><p class="hint">loading…</p></div>
+      </div>
+      <div id="bootRegOptions" style="margin:14px 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px">
+        <p class="lab accent" style="margin:0 0 4px">Registering the client at the AS — OpenID&nbsp;Federation §12 gives two options</p>
+        <p class="muted" style="margin:0 0 10px;font-size:12.5px">Being a federation member (above) makes the entity <i>resolvable</i>. To get a token it
+          still has to become a <b>client of this AS</b>. §12 defines two ways — PingFederate supports both:</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px">
+            <p class="lab" style="margin:0 0 6px">Explicit&nbsp;· <span style="color:var(--acc)">§12.2</span>
+              <span class="pill ok" style="font-size:10px;margin-left:4px">this PF servlet · 📄 above</span></p>
+            <p class="muted" style="margin:0;font-size:12px;line-height:1.6">The client <b>POSTs its entity configuration</b> to the AS's
+              federation registration endpoint <i>up front</i>. The AS validates the trust chain, provisions the client, and returns its
+              metadata (an <code>explicit-registration-response+jwt</code>). A deliberate onboarding step, before any token call.</p>
+          </div>
+          <div style="border:1px solid var(--acc);border-radius:8px;padding:10px 12px;background:rgba(120,180,255,.05)">
+            <p class="lab" style="margin:0 0 6px">Automatic&nbsp;· <span style="color:var(--acc)">§12.1</span>
+              <span class="pill ok" style="font-size:10px;margin-left:4px">this PF servlet · ⚡ above</span></p>
+            <p class="muted" style="margin:0;font-size:12px;line-height:1.6">No registration call at all. The client just presents its
+              <code>private_key_jwt</code> — carrying its <code>trust_chain</code> — at the <b>token endpoint</b>. Our
+              <code>TokenEndpointAutoRegistrationFilter</code> intercepts the <b>first</b> hit, walks the chain to the anchor,
+              <b>provisions the client on the fly</b>, then lets the request authenticate. The token comes back — the client is
+              provisioned from its trust chain the moment it's first used.</p>
+          </div>
+        </div>
+        <p class="hint" style="margin:8px 0 0">The <b>⚡ button</b> demonstrates the <b>automatic</b> path — after it runs, watch the client
+          appear below in <i>“Clients registered in PingFederate”</i>, with no prior registration call.</p>
       </div>
       <div id="bootPfClients" style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
         <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -511,6 +537,7 @@
       </div>
       <div id="bootHierarchy"></div>
       <div id="bootActivity"></div>
+      <div id="bootOutExplicit"></div>
       <div id="bootOutToken"></div>
       <div id="bootOutKey"></div>
       <div id="bootOutCfg"></div>
@@ -1222,6 +1249,7 @@ $('#bootEnroll').onclick = async () => {
   setStatus('#bootStatus', after.resolved ? 'enrolled — entity is a resolvable federation member ✓' : 'enrolled — awaiting resolvability');
   bootStage(after.resolved ? 4 : 3);
   $('#bootAuthz').disabled = false; $('#bootDereg').disabled = false; $('#bootToken').disabled = false;
+  $('#bootRegExplicit').disabled = false;
   loadFederation();
 };
 
@@ -1346,6 +1374,35 @@ async function loadActivity(){
   }catch(e){ el.innerHTML = `<p class="hint">activity unavailable: ${e.message}</p>`; }
 }
 
+$('#bootRegExplicit').onclick = async () => {
+  if(!BOOT.cfgJwt){ setStatus('#bootStatus','sign the entity configuration first (②)'); return; }
+  setStatus('#bootStatus','explicit registration — POSTing the entity configuration to /federation/register…');
+  const out = $('#bootOutExplicit');
+  try{
+    const r = await fetch('/api/register-explicit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: j({entity_config_jwt: BOOT.cfgJwt})}).then(x=>x.json());
+    const ok = r.status===201 || r.status===200;
+    let detail;
+    const dec = ok ? tryDecodeJwt(r.body) : null;                 // the signed explicit-registration-response+jwt
+    if(dec){ detail = pretty(dec.payload); }
+    else { try{ const b=JSON.parse(r.body); detail = b.error_description||b.error||r.body; }catch(_){ detail = (r.body||'').slice(0,500); } }
+    out.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+      <p class="lab accent">Explicit registration (§12.2) — /federation/register, live</p>
+      <p style="margin:6px 0">
+        <span class="pill ${ok?'ok':'err'}">${ok?'✓ client registered — PingFederate returned a signed explicit-registration-response+jwt':'✗ /federation/register HTTP '+r.status}</span></p>
+      <p class="hint">The client POSTed its <b>self-signed entity configuration</b> (<code>application/entity-statement+jwt</code>) to
+      <code>/federation/register</code> — a deliberate step <i>before</i> any token call, the counterpart to the ⚡ automatic path. ${ok
+        ? 'PingFederate validated the trust chain to the anchor, provisioned the client, and signed back the registration response below — the client now appears in the list.'
+        : (r.status===404
+            ? 'PingFederate returned <b>404</b> — the explicit-registration servlet (<code>OpenIdRegistrationServlet</code>) isn\'t mapped on this PF build yet. The URL-mapping fix ships in the next PF redeploy; the ⚡ <b>automatic</b> path above is already live.'
+            : 'This needs the entity enrolled in the controller (③) so PingFederate can resolve its chain to the anchor.')}</p>
+      <pre style="font-size:11px;white-space:pre-wrap;word-break:break-all;margin:6px 0 0">${detail}</pre></div>`;
+    setStatus('#bootStatus', ok?'explicit registration succeeded ✓':'explicit registration returned HTTP '+r.status);
+    loadPfClients();
+    loadActivity();
+  }catch(e){ out.innerHTML = `<p class="hint">explicit registration failed: ${e.message}</p>`; }
+};
+
 $('#bootToken').onclick = async () => {
   setStatus('#bootStatus','requesting a token — automatic registration…');
   const out = $('#bootOutToken');
@@ -1367,7 +1424,7 @@ $('#bootToken').onclick = async () => {
     try { const b=JSON.parse(r.body); detail = ok ? `access_token issued — ${(b.access_token||'').length} chars, token_type ${b.token_type||'?'}, expires_in ${b.expires_in||'?'}` : (b.error_description||b.error||r.body); }
     catch(_) { detail = (r.body||'').slice(0,400); }
     out.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-      <p class="lab accent">Automatic registration — PingFederate token endpoint</p>
+      <p class="lab accent">Automatic registration (§12.1) — the PingFederate token endpoint, live</p>
       <p style="margin:6px 0">
         <span class="pill ${ok?'ok':'err'}">${ok?'✓ token issued — PingFederate auto-provisioned the client':'✗ token endpoint HTTP '+r.status}</span>
         <span class="muted" style="font-size:11px">trust chain length ${(tc.trust_chain||[]).length}${tc.resolved?'':' — chain unresolved'}</span></p>
