@@ -70,6 +70,17 @@
   .tab.active{color:var(--ink);border-bottom-color:var(--acc)}
   body[data-view="deploy"] [data-tab="authz"]{display:none!important}
   body[data-view="authz"] [data-tab="deploy"]{display:none!important}
+  body[data-view="principles"] [data-tab="deploy"],
+  body[data-view="principles"] [data-tab="authz"]{display:none!important}
+  body[data-view="deploy"] [data-tab="principles"],
+  body[data-view="authz"] [data-tab="principles"]{display:none!important}
+  /* principles cards */
+  .pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}
+  .pcard{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:13px 15px}
+  .pcard p{margin:0;font-size:13px} .pcard p+p{margin-top:7px;color:var(--mut)}
+  .pcard .pn{font:11px var(--mono);color:var(--acc);font-weight:700}
+  .pcard h3{font-size:14px;margin:2px 0 6px;font-weight:600;color:var(--ink)}
+  .lead{font-size:15px;line-height:1.6;color:var(--ink);margin:0 0 4px}
 </style>
 </head>
 <body>
@@ -89,9 +100,159 @@
 </header>
 <main>
   <nav class="tabs" role="tablist">
+    <button class="tab" data-view-btn="principles" type="button">Principles</button>
     <button class="tab" data-view-btn="deploy" type="button">① Deployment flow</button>
     <button class="tab" data-view-btn="authz" type="button">② Authentication &amp; authorization</button>
   </nav>
+  <!-- ══════════ PRINCIPLES (overview) ══════════ -->
+  <p class="muted" data-tab="principles">What this is, and the ideas behind it — how agent identity is made
+  <b>governable, provable, and revocable</b>. Every principle here is exercised live in the <b>Deployment flow</b> and
+  <b>Authentication</b> tabs.</p>
+  <section class="step open" data-tab="principles" style="margin-top:6px">
+    <div class="hd"><h2>The problem — identity for software that acts on its own</h2></div>
+    <div class="bd">
+      <p class="desc">Autonomous agents and workloads increasingly <b>act</b> — call APIs, move money, make decisions —
+      with no human in the loop for each request. That breaks the assumptions behind a hand-issued
+      <code>client_id&nbsp;+&nbsp;secret</code>. Four gaps, in particular:</p>
+      <div class="pgrid">
+        <div class="pcard"><h3>Scale</h3><p>You don't register one client — you deploy a <b>fleet</b> of short-lived
+          instances. Minting and rotating a secret per instance doesn't hold.</p></div>
+        <div class="pcard"><h3>Provenance</h3><p>A verifier needs to know <b>what kind</b> of agent is calling and
+          <b>who vouches</b> for it — not merely that it presents a bearer secret.</p></div>
+        <div class="pcard"><h3>Revocation</h3><p>When a type is compromised or retired you must deny it
+          <b>everywhere, at once</b> — not wait for a credential to expire.</p></div>
+        <div class="pcard"><h3>Delegated authority</h3><p>An agent acts <b>on behalf of</b> a principal, with authority
+          that must be narrow, explicit, and auditable — not the agent's own blanket access.</p></div>
+      </div>
+      <p class="hint">Everything below is one coherent answer to those four: a federated trust spine, a two-tier identity,
+      live authorization, and fine-grained delegated grants.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles" style="margin-top:6px">
+    <div class="hd"><h2>The big picture — one trust spine, two tiers, live authorization</h2></div>
+    <div class="bd">
+      <p class="lead">A <b>trust anchor</b> vouches for agent <b>types</b>. Each type is deployed as many <b>instances</b>.
+      An instance authenticates to the <b>authorization server</b>, which resolves it back up the chain to the anchor —
+      <b>live</b> — before issuing a token. Withdraw a type at the anchor and every instance of it is denied at once.</p>
+      <section class="diagram" style="margin:10px 0 4px">
+        <svg viewBox="0 0 1000 320" role="img" aria-label="Trust anchor vouches for types; instances authenticate to the AS which resolves to the anchor">
+          <defs><marker id="pah" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <g class="node active"><rect x="360" y="16" width="280" height="56" rx="9"/>
+            <text class="t1" x="500" y="40">OpenID Federation · Trust Anchor</text>
+            <text class="t2" x="500" y="58">vouches for entities — signs subordinate statements</text></g>
+          <g class="node active"><rect x="80" y="130" width="260" height="72" rx="9"/>
+            <text class="t1" x="210" y="156">Agent TYPE</text>
+            <text class="t2" x="210" y="174">federation entity · attester / vouching key</text>
+            <text class="t2" x="210" y="190">governed · registered · revocable</text></g>
+          <g class="node active"><rect x="80" y="238" width="260" height="60" rx="9"/>
+            <text class="t1" x="210" y="264">Agent INSTANCE</text>
+            <text class="t2" x="210" y="282">a deployment · local cnf / PoP key · ephemeral</text></g>
+          <g class="node active"><rect x="660" y="130" width="270" height="72" rx="9"/>
+            <text class="t1" x="795" y="156">Authorization Server</text>
+            <text class="t2" x="795" y="174">PingFederate · authenticates the client…</text>
+            <text class="t2" x="795" y="190">…then authorizes against the federation</text></g>
+          <g class="node active"><rect x="660" y="238" width="270" height="54" rx="9"/>
+            <text class="t1" x="795" y="262">Access token</text>
+            <text class="t2" x="795" y="280">issued only if the chain resolves — live</text></g>
+          <g class="edge active"><path class="flow" d="M240,130 C262,96 330,74 362,60" marker-end="url(#pah)"/><text class="lbl" x="292" y="92">subordinate of</text></g>
+          <g class="edge active"><path class="flow" d="M210,238 L210,202" marker-end="url(#pah)"/><text class="lbl" x="300" y="223">instance of · attested by</text></g>
+          <g class="edge active"><path class="flow" d="M340,268 C490,250 560,214 660,192" marker-end="url(#pah)"/><text class="lbl" x="500" y="240">presents attestation + PoP</text></g>
+          <g class="edge active"><path class="flow dash" d="M762,130 C702,96 622,74 590,62" marker-end="url(#pah)"/><text class="lbl" x="706" y="92">resolves the chain · live</text></g>
+          <g class="edge active"><path class="flow" d="M795,202 L795,238" marker-end="url(#pah)"/><text class="lbl" x="825" y="223">issues</text></g>
+        </svg>
+        <div class="cap"><b>Trust flows down, proof flows up.</b> The anchor vouches for the type; the type vouches for the
+        instance; the instance proves possession to the AS; the AS re-derives the chain to the anchor on <i>every</i> call —
+        nothing is a static, pre-shared client record.</div>
+      </section>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>Principles</h2></div>
+    <div class="bd">
+      <div class="pgrid">
+        <div class="pcard"><p class="pn">01</p><h3>Trust is federated, not pre-shared</h3>
+          <p>Every participant is an OpenID Federation entity. A trust anchor issues signed subordinate statements; anyone can
+          fetch an entity's configuration and resolve its trust chain to the anchor, verifying it cryptographically.</p>
+          <p class="muted">Onboarding is "join the federation" — trust is discoverable and verifiable, not a hand-configured secret.</p></div>
+        <div class="pcard"><p class="pn">02</p><h3>Two tiers: the type vouches, the instance proves</h3>
+          <p>An agent has a long-lived <b>type</b> — the federation entity that holds the vouching key and is what you govern,
+          register, and revoke — and many ephemeral <b>instances</b>, each with its own key that only proves possession.</p>
+          <p class="muted">Governance lives at the type; runtime proof at the instance. You revoke a type, not chase down instances.</p></div>
+        <div class="pcard"><p class="pn">03</p><h3>Authentication is separate from authorization</h3>
+          <p>Two questions, answered separately. <b>AuthN:</b> does the caller possess the keys it claims? <b>AuthZ:</b> given
+          who it is, is it still vouched-for, active, and within the authority its type is registered for?</p>
+          <p class="muted">The AS re-checks authorization on every call — it isn't baked into a static client record.</p></div>
+        <div class="pcard"><p class="pn">04</p><h3>Attestation binds an instance key to a vouched type</h3>
+          <p>The type / attester signs a Client Attestation that binds the instance's public key via <code>cnf</code>; the
+          instance signs a Proof-of-Possession with the matching private key. Trust in the attester is federation-resolved.</p>
+          <p class="muted">This is OAuth 2.0 Attestation-Based Client Authentication (draft-09) — a standard, not a bespoke scheme.</p></div>
+        <div class="pcard"><p class="pn">05</p><h3>Workload identity (SPIFFE) is metadata, not auth</h3>
+          <p>A SPIFFE SVID states <i>what</i> and <i>where</i> a workload is. It rides inside the attestation's
+          <code>workload</code> claim as attributes the AS can authorize on and selectively disclose — it does not authenticate.</p>
+          <p class="muted">Infrastructure identity informs authorization; it never replaces proof-of-possession.</p></div>
+        <div class="pcard"><p class="pn">06</p><h3>A client is known by its federation identity</h3>
+          <p>Registration is transparent or explicit (OIDF §12). <b>Automatic:</b> present your trust chain at the token
+          endpoint and the AS provisions you on first use. <b>Explicit:</b> POST your entity configuration up front.</p>
+          <p class="muted">Either way there is no hand-minted <code>client_id + secret</code> — the client is its resolvable entity.</p></div>
+        <div class="pcard"><p class="pn">07</p><h3>Revocation is immediate and fleet-wide</h3>
+          <p>Withdraw the type's subordinate statement at the trust controller and its chain stops resolving — the very next
+          token exchange fails, and <b>every instance of that type is denied at once</b>.</p>
+          <p class="muted">Because authorization is resolved live, revocation is a real-time control, not a slow-propagating list.</p></div>
+        <div class="pcard"><p class="pn">08</p><h3>Standards end-to-end, environment as code</h3>
+          <p>OpenID Federation for trust, the OAuth attestation draft + DPoP for proof, RAR for fine-grained authority — real,
+          interoperable specifications. And the whole environment is git-managed, CI-deployed config-as-code.</p>
+          <p class="muted">Reproducible — a bad change is <code>git revert</code>, not an incident.</p></div>
+        <div class="pcard"><p class="pn">09</p><h3>Authority is delegated and fine-grained (RAR)</h3>
+          <p>An agent acts <b>on behalf of</b> a principal. The token carries Rich Authorization Requests
+          (<code>authorization_details</code>, RFC&nbsp;9396) — specific actions on specific resources — and an
+          <code>act</code> claim naming the agent as the actor, so it is <b>delegation, not impersonation</b>.</p>
+          <p class="muted">A downstream policy engine (PingAuthorize) evaluates each detail — least privilege, per request.</p></div>
+        <div class="pcard"><p class="pn">10</p><h3>Every step is verifiable and auditable</h3>
+          <p>Nothing rests on a shared secret. Each artifact is a signed JWT with a traceable issuer; the actor chain
+          (<code>act</code>), the attesting type, and the resolved trust chain are all recorded.</p>
+          <p class="muted">"Who did this, on whose behalf, vouched for by whom" is answerable after the fact.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>The two-phase gate — what the AS actually checks</h2></div>
+    <div class="bd">
+      <p class="desc">A token is issued only if <b>both</b> phases pass. Authentication proves possession; authorization
+      proves standing. They're independent — a perfectly-signed request from a revoked type still fails.</p>
+      <div class="jwt">
+        <div class="pcard"><h3>① Authenticate — "are you who you claim?"</h3>
+          <p class="muted" style="margin:6px 0 0">
+          • the Client Attestation verifies against a <b>federation-resolved</b> attester key — not a shared secret<br>
+          • the PoP / DPoP is signed by the <code>cnf</code> key the attestation bound — <b>possession</b><br>
+          • freshness (<code>iat</code>/<code>exp</code> + skew), single-use <code>jti</code>, and the challenge if one was issued<br>
+          • the <code>aud</code> names <i>this</i> AS</p></div>
+        <div class="pcard"><h3>② Authorize — "may you, right now?"</h3>
+          <p class="muted" style="margin:6px 0 0">
+          • the client's trust chain <b>resolves live</b> to the anchor — revoke and it doesn't<br>
+          • the entity is <b>active</b> and registered for this registration type<br>
+          • the requested <b>scope ⊆</b> what the entity is entitled to<br>
+          • each RAR <code>authorization_details</code> is within the delegated grant (policy engine)</p></div>
+      </div>
+      <p class="hint">Phase ① is the client-authentication draft; phase ② is OpenID Federation resolution + policy. Revocation
+      lives entirely in phase ② — which is why it bites on the very next call.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>Built on standards — not a bespoke scheme</h2></div>
+    <div class="bd">
+      <p class="desc">Every layer is a published specification, so the pieces interoperate and can be verified independently.</p>
+      <div class="pgrid">
+        <div class="pcard"><h3>OpenID Federation 1.0</h3><p class="muted" style="margin:6px 0 0">the trust spine — entity statements, subordinate statements, trust chains, resolution, §12 registration</p></div>
+        <div class="pcard"><h3>OAuth Attestation-Based Client Auth · draft-09</h3><p class="muted" style="margin:6px 0 0">the client attestation + PoP that authenticate an instance under its type</p></div>
+        <div class="pcard"><h3>DPoP · RFC 9449</h3><p class="muted" style="margin:6px 0 0">sender-constrained proof-of-possession — the combined-mode alternative to a separate PoP</p></div>
+        <div class="pcard"><h3>RAR · RFC 9396</h3><p class="muted" style="margin:6px 0 0"><code>authorization_details</code> — fine-grained, per-resource authority instead of coarse scopes</p></div>
+        <div class="pcard"><h3>Token Exchange · RFC 8693 + <code>act</code></h3><p class="muted" style="margin:6px 0 0">delegation with an actor claim — the agent acts on behalf of a principal, not as them</p></div>
+        <div class="pcard"><h3>SD-JWT · SPIFFE</h3><p class="muted" style="margin:6px 0 0">selective disclosure of attributes; a SPIFFE SVID as the workload's infrastructure identity (metadata)</p></div>
+      </div>
+    </div>
+  </section>
+
   <p class="muted" data-tab="deploy">The agent lifecycle, end to end. <b>Phase&nbsp;1</b>: create an agent <b>type</b> and
   register it as a federation entity (once). <b>Phase&nbsp;2</b>: deploy an <b>instance</b> of it that authenticates with a
   client attestation and gets a token. The concept below frames the two-tier model; each step then runs live.</p>
@@ -1493,7 +1654,7 @@ function showView(v){
   document.querySelectorAll('[data-view-btn]').forEach(b=>b.classList.toggle('active', b.dataset.viewBtn===v));
 }
 document.querySelectorAll('[data-view-btn]').forEach(b=>b.onclick=()=>showView(b.dataset.viewBtn));
-showView('deploy');
+showView('principles');
 
 // Deployment story order: Phase 1 (create + register the type) precedes Phase 2 (deploy instance + token).
 (function(){ const boot=$('#boot'), spiffe=$('#spiffe');
