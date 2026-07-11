@@ -82,6 +82,8 @@ def _fed_url(explicit_env, railway_ref_env, default):
 
 TRUST_CONTROLLER = _fed_url("LIGHTHOUSE", "RAILWAY_SERVICE_LIGHTHOUSE_URL", "https://lighthouse-staging-e017.up.railway.app")
 FEDHOST = _fed_url("FEDHOST", "RAILWAY_SERVICE_FEDHOST_URL", "https://fedhost-staging.up.railway.app")
+# Deployed agent workload (SPIFFE-attested): the demo watches it come up + remotely invokes its token exchange.
+WORKLOAD_URL = os.environ.get("WORKLOAD_URL", "https://agent-workload-production.up.railway.app").rstrip("/")
 # The step-3 "target AS federation profile" options map to real federation entities.
 AS_PROFILE_SUB = {
     "home-emea":   FEDHOST + "/e/as-emea",      # under the trust controller + workload-inspection mark
@@ -497,6 +499,7 @@ class Handler(BaseHTTPRequestHandler):
                 "git_commit": GIT_COMMIT,
                 "software_version": SOFTWARE_VERSION,
                 "trust_controller": TRUST_CONTROLLER,
+                "workload_url": WORKLOAD_URL,
             }))
         elif self.path.startswith("/api/resolvesub"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)

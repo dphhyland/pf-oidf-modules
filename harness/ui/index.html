@@ -300,6 +300,144 @@
     </div>
   </section>
 
+  <!-- Concept: two-tier agent identity — the type vouches, the instance proves -->
+  <section class="step open" id="concept" data-tab="deploy" style="margin-top:6px">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">▲</span>
+      <h2>Agent identity, two tiers — the <i>type</i> vouches, the <i>instance</i> proves</h2></div>
+    <div class="bd">
+      <p class="desc">An agent identity has <b>two keys at two levels</b>. You register an <b>agent&nbsp;type</b> once — it is a
+      federation <b>entity</b> with its own <b>entity&nbsp;/&nbsp;attester key</b>, enrolled as a subordinate of the trust anchor
+      so it chains into the federation. Then you deploy <b>instances</b> of that type: each instance mints its <b>own local key</b>
+      and is <b>attested by its type</b>. At the token endpoint the instance presents <b>two signatures</b> — one from each key.</p>
+      <section class="diagram" style="margin:4px 0 14px">
+        <svg viewBox="0 0 1000 432" role="img" aria-label="Two-tier agent identity: type vouches, instance proves">
+          <defs><marker id="ahc" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <rect class="zone" x="56" y="118" width="372" height="158" rx="12"/>
+          <rect class="zone" x="572" y="118" width="372" height="158" rx="12"/>
+          <text class="zlabel" x="242" y="108">TIER 1 · AGENT TYPE — registered once</text>
+          <text class="zlabel" x="758" y="108">TIER 2 · AGENT INSTANCE — per deployment</text>
+          <g class="node active"><rect x="360" y="18" width="280" height="56" rx="8"/>
+            <text class="t1" x="500" y="42">TRUST ANCHOR — Lighthouse</text>
+            <text class="t2" x="500" y="60">the federation root of trust</text></g>
+          <g class="node active"><rect x="340" y="356" width="320" height="58" rx="8"/>
+            <text class="t1" x="500" y="380">PINGFEDERATE — the AS (verifier)</text>
+            <text class="t2" x="500" y="398">resolves the type key ↑ the chain · verifies both signatures</text></g>
+          <g class="node active"><rect x="76" y="150" width="332" height="98" rx="8"/>
+            <text class="t1" x="242" y="176">Agent TYPE — a federation entity</text>
+            <text class="t2" x="242" y="196">entity / attester key · held in OpenBao (transit)</text>
+            <text class="t2" x="242" y="214">anchored: subordinate of the trust anchor</text>
+            <text class="t2" x="242" y="232">signs every instance's attestation</text></g>
+          <g class="node active"><rect x="592" y="150" width="332" height="98" rx="8"/>
+            <text class="t1" x="758" y="176">Agent INSTANCE — a deployment</text>
+            <text class="t2" x="758" y="196">instance key · local, never leaves the instance</text>
+            <text class="t2" x="758" y="214">carries cnf = its own public key</text>
+            <text class="t2" x="758" y="232">signs the PoP — proof of possession</text></g>
+          <g class="edge active"><path class="flow" d="M440,74 C360,96 320,118 268,148" marker-end="url(#ahc)"/><text class="lbl" x="474" y="98">① register · subordinate statement</text></g>
+          <g class="edge active"><path class="flow" d="M408,190 L592,190" marker-end="url(#ahc)"/><text class="lbl" x="500" y="180">② Client Attestation JWT</text><text class="lbl" x="500" y="266">entity-signed · binds cnf = instance key</text></g>
+          <g class="edge active"><path class="flow" d="M712,248 C672,304 612,334 566,354" marker-end="url(#ahc)"/><text class="lbl" x="702" y="300">③ attestation + PoP</text><text class="lbl" x="702" y="314">(PoP is instance-signed)</text></g>
+          <g class="edge active"><path class="flow dash" d="M418,368 C176,332 176,112 360,56" marker-end="url(#ahc)"/><text class="lbl" x="250" y="300">④ resolve attester key</text><text class="lbl" x="250" y="314">↑ the trust chain</text></g>
+        </svg>
+        <div class="cap">① The anchor vouches for the <b>type</b> — an anchor-signed subordinate statement binds
+          <code>entity_id → entity key</code>. ② The type <b>attests each instance</b>: a Client Attestation JWT signed by the
+          <b>entity key</b> (in OpenBao), carrying the instance's public key as <code>cnf</code>. ③ At the token endpoint the
+          instance presents the attestation <i>and</i> a <b>PoP signed by its local key</b>. ④ PingFederate resolves the type's
+          key up the chain to the anchor and verifies both — the type <b>vouches</b>, the instance <b>proves</b>.</div>
+      </section>
+      <div class="jwt" style="margin:0 0 14px">
+        <div style="border:1px solid var(--line);border-radius:8px;padding:12px">
+          <p class="lab accent" style="margin:0 0 6px">Entity / attester key — one per TYPE</p>
+          <p class="muted" style="margin:0;font-size:12.5px;line-height:1.55">Created when the agent <b>type</b> is registered.
+          <b>Signs</b> the Client Attestation JWT — vouches for each instance and binds its <code>cnf</code>. <b>Lives in
+          OpenBao</b> transit: non-exportable, sign-on-request. Revoke the <b>whole fleet</b> by pulling the type's subordinate
+          statement from the anchor.</p>
+        </div>
+        <div style="border:1px solid var(--line);border-radius:8px;padding:12px">
+          <p class="lab accent" style="margin:0 0 6px">Instance key — one per INSTANCE</p>
+          <p class="muted" style="margin:0;font-size:12.5px;line-height:1.55">Minted when an <b>instance</b> is deployed.
+          <b>Signs</b> the PoP — proves possession of the attested <code>cnf</code> key. <b>Local to the instance</b>, ideally
+          hardware-backed: never leaves. Revoke a <b>single instance</b> via its <code>cnf</code>/<code>jti</code>, without
+          touching the type.</p>
+        </div>
+      </div>
+      <p class="desc" style="margin:0"><b>Why the split:</b> the <i>type</i> is the unit of <b>trust &amp; revocation</b>
+      — register once, kill the whole fleet by de-registering it; the <i>instance</i> is the unit of <b>possession</b> — each
+      deployment is individually bound and individually revocable. <b>Day&nbsp;0</b> below runs this live.</p>
+    </div>
+  </section>
+
+  <!-- SPIFFE-attested instance: a SPIRE SVID becomes the client attestation's workload identity -->
+  <section class="step open" id="spiffe" data-tab="deploy" style="margin-top:26px">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">◆</span>
+      <h2>SPIFFE-attested instance — a SPIRE SVID becomes the attestation's workload identity</h2>
+      <span class="s" id="spiffeStatus"></span></div>
+    <div class="bd">
+      <p class="desc"><b>Two-layer identity, live.</b> The agent <b>type</b> is registered as a federation entity in Day&nbsp;0
+      below. Here we deploy an <b>instance</b> and a <b>SPIFFE agent</b> (the SPIRE-agent Workload API) attests it by selector
+      match and mints a <b>JWT-SVID</b> (<code>sub = spiffe://…</code>). That SVID's identity + attested attributes are
+      <b>dropped into the Client Attestation's <code>workload</code> claim</b> (<code>to_workload_claim</code>); the
+      type/attester key signs it and it goes to PingFederate. SPIFFE says <i>what/where the workload is</i>; the OIDF
+      attestation says <i>this federation member may get a token disclosing it</i>. Runs in your browser — a faithful
+      stand-in for <code>client_attestation_sdk/spiffe.py</code>'s <code>SpiffeAgent</code>.</p>
+      <section class="diagram" style="margin:4px 0 14px">
+        <svg viewBox="0 0 1000 176" role="img" aria-label="SPIFFE SVID into the client attestation">
+          <defs><marker id="ahs" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <text class="zlabel" x="150" y="34">INFRASTRUCTURE IDENTITY (SPIFFE)</text>
+          <text class="zlabel" x="662" y="34">FEDERATION IDENTITY (OIDF) → AS</text>
+          <g class="node active"><rect x="34" y="52" width="212" height="86" rx="8"/>
+            <text class="t1" x="140" y="82">SPIFFE agent</text>
+            <text class="t2" x="140" y="100">SPIRE Workload API</text>
+            <text class="t2" x="140" y="116">attests instance by selectors</text></g>
+          <g class="node active"><rect x="300" y="52" width="212" height="86" rx="8"/>
+            <text class="t1" x="406" y="82">JWT-SVID</text>
+            <text class="t2" x="406" y="100">sub = spiffe://banking.demo/…</text>
+            <text class="t2" x="406" y="116">signed by the trust domain</text></g>
+          <g class="node active"><rect x="566" y="52" width="234" height="86" rx="8"/>
+            <text class="t1" x="683" y="80">Client Attestation</text>
+            <text class="t2" x="683" y="98">workload = to_workload_claim(svid)</text>
+            <text class="t2" x="683" y="114">type/attester key signs · cnf = instance</text></g>
+          <g class="node active"><rect x="854" y="52" width="120" height="86" rx="8"/>
+            <text class="t1" x="914" y="90">PingFederate</text>
+            <text class="t2" x="914" y="108">the AS</text></g>
+          <g class="edge active"><path class="flow" d="M246,95 L300,95" marker-end="url(#ahs)"/><text class="lbl" x="273" y="86">issue</text></g>
+          <g class="edge active"><path class="flow" d="M512,95 L566,95" marker-end="url(#ahs)"/><text class="lbl" x="539" y="86">drop in</text></g>
+          <g class="edge active"><path class="flow" d="M800,95 L854,95" marker-end="url(#ahs)"/><text class="lbl" x="827" y="86">present</text></g>
+        </svg>
+        <div class="cap">The SPIFFE agent attests the instance's selectors and mints a JWT-SVID for its <code>spiffe://</code>
+          identity. <code>to_workload_claim(svid)</code> turns it into the attestation's <code>workload</code> claim —
+          carrying the <code>spiffe_id</code>, the attested attributes, <i>and the SVID itself</i> so the AS can verify the
+          SPIFFE signature independently. The type key signs the attestation; the instance key signs the PoP.</div>
+      </section>
+      <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+        <label class="opt" style="flex-direction:column;align-items:flex-start;gap:4px">agent type
+          <select id="spiffeType" class="sel" style="min-width:320px">
+            <option value="payment-agent">payment-agent — spiffe://banking.demo/payment-agent</option>
+            <option value="origination-agent">origination-agent — spiffe://banking.demo/origination-agent</option>
+          </select></label>
+        <button id="spiffeRun">▶ Run — issue SVID, attest, present to PingFederate</button>
+      </div>
+      <div id="spiffeOut"></div>
+    </div>
+  </section>
+
+  <!-- Remote agent workload: a real deployed service, watched + remotely invoked -->
+  <section class="step open" id="remote" data-tab="deploy" style="margin-top:26px">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">⬢</span>
+      <h2>Remote agent workload — a real deployed service you invoke live</h2>
+      <span class="s" id="remoteStatus"></span></div>
+    <div class="bd">
+      <p class="desc">Everything above ran in your browser. This is a <b>real agent workload deployed as its own service</b>
+      at <code id="remoteUrl">…</code>. On boot it attests itself via the SPIFFE agent and obtains its JWT-SVID; here you
+      <b>remotely invoke</b> it — it builds the SPIFFE-attested Client Attestation <b>server-side</b> and presents it to
+      PingFederate, returning what happened. Same <code>client_attestation_sdk</code> + <code>spiffe.py</code> bridge, for
+      real, over the network.</p>
+      <div class="row" style="gap:12px;margin-bottom:8px">
+        <button id="remoteProbe" class="ghost">↻ Check workload identity</button>
+        <button id="remoteInvoke">▶ Invoke remotely — run the token exchange</button>
+      </div>
+      <div id="remoteOut"></div>
+    </div>
+  </section>
+
   <!-- Day-0 bootstrap: deploy a client & enroll its entity key in the federation -->
   <section class="step open" id="boot" data-tab="deploy" style="margin-top:26px">
     <div class="hd"><span class="n" style="font-size:10px;font-weight:700">0</span>
@@ -676,6 +814,116 @@ function artBlock(title, jwt, dec){
     </div>
     <p class="lab muted">compact JWT</p><pre class="muted">${jwt}</pre></div>`;
 }
+
+// ── SPIFFE Workload API — in-browser SpiffeAgent (faithful stand-in for client_attestation_sdk/spiffe.py) ──
+// Attests a workload by selector match and mints a JWT-SVID for its spiffe:// identity, alongside the
+// attested attributes. to_workload_claim(svid) turns that into the OIDF Client Attestation's `workload` claim.
+const SPIFFE_TRUST_DOMAIN = 'banking.demo';
+const SpiffeAgent = {
+  key:null, entries:[],
+  async init(){ if(!this.key) this.key = await genKey(); return this; },
+  register(sel, id, attrs){
+    if(!id.startsWith('spiffe://')) id = `spiffe://${SPIFFE_TRUST_DOMAIN}/${id.replace(/^\/+/,'')}`;
+    this.entries.push({selectors:sel, spiffe_id:id, attributes:attrs||{}}); return this; },
+  async fetchJwtSvid(sel, aud, ttl=300){
+    const e = this.entries.find(e => Object.entries(e.selectors).every(([k,v]) => sel[k]===v));
+    if(!e) throw new Error('no SPIFFE registration entry matches selectors '+j(sel));
+    const iat = Math.floor(Date.now()/1000), exp = iat+ttl;
+    const token = await jws(this.key, {alg:'ES256', typ:'JWT', kid:await jwkThumb(await pubJwk(this.key))},
+                            {sub:e.spiffe_id, aud:[aud], iat, exp});
+    return {spiffe_id:e.spiffe_id, token, attributes:{...e.attributes}, audience:aud, issued_at:iat, expires_at:exp}; },
+};
+function toWorkloadClaim(svid){ return {attested_by:'spiffe', spiffe_id:svid.spiffe_id, attributes:{...svid.attributes}, svid:svid.token}; }
+// SPIRE-style registration entries: selectors identify the workload → the SPIFFE ID it earns + attested attributes.
+async function initSpiffe(){
+  await SpiffeAgent.init();
+  if(SpiffeAgent.entries.length) return;
+  const v = CFG.software_version || '0.0.1-SNAPSHOT';
+  SpiffeAgent
+    .register({'docker:image':'payment-agent','unix:uid':'0'}, 'payment-agent',
+      {workload_type:'payment-agent', region:'EMEA', environment:'prod',
+       entitlements:['read_accounts','create_opportunity','submit_quote'], software_version:v})
+    .register({'docker:image':'origination-agent','unix:uid':'0'}, 'origination-agent',
+      {workload_type:'origination-agent', region:'EMEA', environment:'prod',
+       entitlements:['read_accounts'], software_version:v});
+}
+async function runSpiffe(){
+  const out = $('#spiffeOut'); out.innerHTML='';
+  const push = h => out.insertAdjacentHTML('beforeend', h);
+  setStatus('#spiffeStatus','running…');
+  try{
+    await initSpiffe();
+    const type = ($('#spiffeType')||{}).value || 'payment-agent';
+    // ① deploy the instance; load the type/attester key (mock attester — pre-trusted by PF)
+    const typeKey = await importAttester();
+    const instanceKey = await genKey();
+    const cnfJwk = await pubJwk(instanceKey, 'instance-1');
+    const selectors = {'docker:image':type, 'unix:uid':'0'};
+    push(`<div style="margin:12px 0"><p class="lab accent">① Instance deployed — presents its selectors to the SPIFFE agent</p><pre class="muted">${pretty(selectors)}</pre></div>`);
+    // ② SPIFFE agent attests + issues the JWT-SVID
+    const svid = await SpiffeAgent.fetchJwtSvid(selectors, 'https://attester.example.com');
+    push(artBlock('② SPIFFE agent → JWT-SVID (the instance’s infrastructure identity)', svid.token, decode(svid.token)));
+    push(`<p class="hint">SPIFFE ID <code>${svid.spiffe_id}</code> · attributes the agent attested (kept agent-side, not in the SVID): <code>${Object.keys(svid.attributes).join(', ')||'—'}</code></p>`);
+    // ③ build the client attestation — the SVID becomes the workload claim
+    const now = Math.floor(Date.now()/1000);
+    const clientId = 'https://rp.example.com';
+    const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
+    const attPayload = {iss:'https://attester.example.com', sub:clientId, iat:now, exp:now+600,
+      cnf:{jwk:cnfJwk}, workload:toWorkloadClaim(svid), authorization_details:ENTITLEMENT};
+    const attestation = await jws(typeKey, attHeader, attPayload);
+    push(artBlock('③ Client Attestation — the SVID dropped into <code>workload</code>, signed by the type/attester key', attestation, {header:attHeader, payload:attPayload}));
+    // PoP signed by the instance key
+    const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
+    const proof = await jws(instanceKey, {alg:'ES256', typ:'oauth-client-attestation-pop+jwt', kid:'instance-1'},
+                            {iss:clientId, aud:CFG.token_endpoint, jti, iat:now});
+    // ④ present to PingFederate
+    push(`<p class="lab accent" style="margin-top:14px">④ Present to PingFederate — <code>OAuth-Client-Attestation</code> + <code>-PoP</code></p>`);
+    const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:j({form:{grant_type:'client_credentials'}, headers:{'OAuth-Client-Attestation':attestation, 'OAuth-Client-Attestation-PoP':proof}})}).then(x=>x.json());
+    let body; try{ body = JSON.parse(r.body); }catch{ body = r.body; }
+    const ok = r.status===200;
+    push(`<div style="margin:6px 0"><span class="pill ${ok?'ok':'warn'}">PingFederate HTTP ${r.status}</span><pre>${typeof body==='string'?body:pretty(body)}</pre></div>`);
+    push(`<p class="hint">The <code>workload</code> PingFederate sees is now <b>SPIFFE-attested</b> (<code>attested_by:"spiffe"</code>, <code>${svid.spiffe_id}</code>) and carries the raw SVID, so the AS can verify the SPIFFE signature against the trust-domain bundle independently.${ok?'':' <b>The <code>attestation_validation_failed</code> is expected here:</b> this dev demo signs with the pre-shared <b>mock attester</b>, which PF treats as untrusted — full token issuance needs a <b>federation-resolved</b> attester (the agent-type entity registered in Day&nbsp;0 below, resolved up the trust chain). What just ran — SVID minted → dropped into <code>workload</code> → presented — is exactly the SPIFFE→attestation integration.'}</p>`);
+    setStatus('#spiffeStatus', ok?'token issued ✓':'presented — see response', '');
+  }catch(e){ push(`<div style="margin:8px 0"><span class="pill err">error</span> <span class="muted">${(e&&e.message)||e}</span></div>`); setStatus('#spiffeStatus','error',''); }
+}
+{ const b = $('#spiffeRun'); if(b) b.onclick = runSpiffe; }
+
+// ── Remote agent workload — probe + invoke a real deployed service (CORS-enabled; browser → workload) ──
+function workloadUrl(){ return (CFG.workload_url || 'https://agent-workload-production.up.railway.app').replace(/\/+$/,''); }
+async function remoteProbe(){
+  const out=$('#remoteOut'); setStatus('#remoteStatus','probing…');
+  try{
+    const d = await fetch(workloadUrl()+'/identity').then(r=>r.json());
+    out.innerHTML = `<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+      <span class="pill ok">workload up</span>
+      <table style="font-size:12px;margin-top:8px;border-collapse:collapse">
+        <tr><td class="muted" style="padding:2px 12px 2px 0">agent type</td><td><code>${d.agent_type}</code></td></tr>
+        <tr><td class="muted" style="padding:2px 12px 2px 0">SPIFFE ID</td><td><code>${d.spiffe_id}</code></td></tr>
+        <tr><td class="muted" style="padding:2px 12px 2px 0">trust domain</td><td><code>${d.trust_domain}</code></td></tr>
+        <tr><td class="muted" style="padding:2px 12px 2px 0">attested attributes</td><td><code>${Object.keys(d.attributes||{}).join(', ')}</code></td></tr>
+        <tr><td class="muted" style="padding:2px 12px 2px 0">token endpoint</td><td><code>${d.pf_token_endpoint}</code></td></tr>
+      </table></div>`;
+    setStatus('#remoteStatus','up','');
+  }catch(e){ out.innerHTML=`<div style="margin:8px 0"><span class="pill err">unreachable</span> <span class="muted">${e.message||e}</span></div>`; setStatus('#remoteStatus','unreachable',''); }
+}
+async function remoteInvoke(){
+  const out=$('#remoteOut'); setStatus('#remoteStatus','invoking…');
+  out.innerHTML='<p class="hint">calling the workload’s <code>POST /invoke</code> …</p>';
+  try{
+    const d = await fetch(workloadUrl()+'/invoke',{method:'POST'}).then(r=>r.json());
+    const ok = d.pf_status===200;
+    out.innerHTML='';
+    const push=h=>out.insertAdjacentHTML('beforeend',h);
+    push(artBlock('The workload’s SPIFFE JWT-SVID (fetched server-side)', d.svid, decode(d.svid)));
+    push(artBlock('The Client Attestation the workload built — SVID in <code>workload</code>', d.attestation, decode(d.attestation)));
+    let pfBody; try{ pfBody=pretty(JSON.parse(d.pf_body)); }catch{ pfBody=d.pf_body; }
+    push(`<div style="margin:8px 0"><span class="pill ${ok?'ok':'warn'}">PingFederate HTTP ${d.pf_status}</span><pre>${pfBody}</pre></div>`);
+    push(`<p class="hint">This ran <b>on the deployed workload</b>, not your browser — the SVID was minted and dropped into the attestation server-side, then presented to PingFederate.${ok?'':' The <code>attestation_validation_failed</code> is the dev mock attester (untrusted); a federation-resolved attester issues the token.'}</p>`);
+    setStatus('#remoteStatus', ok?'token issued ✓':'invoked — see response','');
+  }catch(e){ out.innerHTML=`<div style="margin:8px 0"><span class="pill err">error</span> <span class="muted">${e.message||e}</span></div>`; setStatus('#remoteStatus','error',''); }
+}
+{ const p=$('#remoteProbe'); if(p) p.onclick=remoteProbe; const i=$('#remoteInvoke'); if(i) i.onclick=remoteInvoke; }
 
 // Panel showing the AS resolved as a federation entity + the disclosure policy decision.
 function asEntityBlock(a){
@@ -1170,6 +1418,8 @@ fetch('/config').then(r=>r.json()).then(c=>{
   if(c.console_url){ $('#consoleLink').href=c.console_url; const bc=$('#bootConsoleLink'); if(bc) bc.href=c.console_url; }
   if(c.pf_clients_url){ const br=$('#bootRawLink'); if(br) br.href=c.pf_clients_url; }
   if(c.client_id){ $('#clientId').value=c.client_id; }
+  { const ru=$('#remoteUrl'); if(ru) ru.textContent=(c.workload_url||'—'); }
+  if(typeof remoteProbe==='function') remoteProbe();
 });
 </script>
 </body>
