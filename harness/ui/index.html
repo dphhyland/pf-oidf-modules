@@ -277,6 +277,103 @@
     </div>
   </section>
   <section class="step open" data-tab="principles">
+    <div class="hd"><h2>Anatomy of a delegated exchange — envelope vs actor, decoded</h2></div>
+    <div class="bd">
+      <p class="desc">The same split, on the wire (example values). The <b>attestation</b> carries the entitlement
+      <b>envelope</b> — what the type may ever do. A token exchange then mints an access token <b>narrowed to one task</b>
+      and stamped with the <b>actor chain</b> — on whose behalf — and sender-constrained to the instance key.</p>
+      <p class="lab accent" style="margin:14px 0 4px">① Client Attestation — signed by the <b>attester</b> (the type's key)</p>
+      <pre style="white-space:pre;word-break:normal;overflow-x:auto">{
+  "<span class="accent">iss</span>": "https://attester.example.com",         <span class="muted">// the attester — the type's vouching key</span>
+  "<span class="accent">sub</span>": "https://rp.example.com",               <span class="muted">// the client / agent type</span>
+  "<span class="accent">cnf</span>": { "jwk": { "kty":"EC", "crv":"P-256", "x":"…", "y":"…" } },   <span class="muted">// binds the INSTANCE key</span>
+  "workload": { "attested_by":"spiffe", "spiffe_id":"spiffe://banking.demo/payment-agent" },   <span class="muted">// metadata, not auth</span>
+  "<b style="color:var(--warn)">authorization_details</b>": [                        <span class="muted">// ← the ENTITLEMENT ENVELOPE (the ceiling)</span>
+    { "type":"sales_agent",
+      "actions":["read_accounts","create_opportunity","submit_quote"],
+      "locations":["https://crm.contoso.com/api"],
+      "sales_regions":["EMEA"], "privileges":["quota:standard"] } ]
+}</pre>
+      <p class="hint">Plus a <b>PoP</b> signed by the instance's <code>cnf</code> key (<code>aud</code> = this AS, one-time
+      <code>jti</code>). Together they authenticate the instance under its vouched type — phase ① of the gate.</p>
+      <p class="lab accent" style="margin:16px 0 4px">② Access token — issued by the <b>AS</b>, narrowed + stamped with the actor</p>
+      <pre style="white-space:pre;word-break:normal;overflow-x:auto">{
+  "iss": "https://as.bank.example",
+  "<b style="color:var(--warn)">sub</b>": "https://principal.example/alice",      <span class="muted">// the PRINCIPAL — on whose behalf</span>
+  "<b style="color:var(--warn)">act</b>": { "sub": "spiffe://banking.demo/payment-agent" },   <span class="muted">// the ACTOR — the agent (delegation)</span>
+  "client_id": "https://rp.example.com",            <span class="muted">// the agent operator (the registered client)</span>
+  "scope": "create_opportunity",
+  "<b style="color:var(--warn)">authorization_details</b>": [                        <span class="muted">// ⊆ the attested envelope, narrowed to THIS task</span>
+    { "type":"sales_agent", "actions":["create_opportunity"],
+      "locations":["https://crm.contoso.com/api"], "sales_regions":["EMEA"] } ],
+  "cnf": { "jkt": "…" },                             <span class="muted">// sender-constrained to the instance key</span>
+  "aud": "https://crm.contoso.com/api"
+}</pre>
+      <p class="hint"><b>Read the two together.</b> The envelope in ① is the ceiling the attester vouched for; the token in
+      ② is <b>⊆</b> that envelope — narrowed to one action for one task. <code>sub</code> is the <b>principal</b>,
+      <code>act.sub</code> is the <b>agent</b>: the action is attributable to the agent <i>acting for</i> the principal,
+      never disguised as the principal (impersonation). <code>cnf</code> binds the token to the instance's key, so a stolen
+      bearer copy is useless.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>The federation, in depth — statements, chains, and how trust resolves</h2></div>
+    <div class="bd">
+      <p class="desc">The trust spine is OpenID Federation 1.0. Every participant is an <b>Entity</b> with a signed statement;
+      trust is a <b>chain of signatures</b> up to a known anchor key — not Web&nbsp;PKI, not TLS certificates, not a shared secret.</p>
+      <div class="jwt">
+        <div class="pcard"><h3>Entity Configuration — self-signed</h3>
+          <p>What an entity says <i>about itself</i>. <code>iss == sub</code>, signed by its own <b>Federation Entity Key</b>,
+          published at <code>/.well-known/openid-federation</code>. Declares its <code>jwks</code>, its <code>metadata</code>,
+          and <code>authority_hints</code> — who its superiors are.</p></div>
+        <div class="pcard"><h3>Subordinate Statement — superior-signed</h3>
+          <p>What a <b>superior</b> says <i>about a subordinate</i>. <code>iss != sub</code>, signed by the superior's key —
+          this is the <b>vouching</b>. Carries the subordinate's key and may shape its metadata via <code>metadata_policy</code>.
+          Deleting it is what revokes the entity.</p></div>
+      </div>
+      <p class="lab accent" style="margin:14px 0 4px">The trust chain — leaf → anchor</p>
+      <p class="muted" style="margin:0 0 8px">A chain is an ordered set of statements. Each link's <code>iss</code> equals the
+      next-one-up's <code>sub</code>, and each is <b>signed by a key in the statement above it</b> — so you verify signatures
+      all the way up; the top is the Trust Anchor's own self-signed configuration, whose key you trust <b>out-of-band</b>.</p>
+      <pre style="white-space:pre;word-break:normal;overflow-x:auto"><span class="muted">ES[0]</span>  Entity Configuration of the LEAF          <span class="muted">— self-signed by the leaf</span>
+   ↑  signed by a key in
+<span class="muted">ES[1]</span>  Subordinate Statement about the leaf      <span class="muted">— signed by the superior (vouches)</span>
+   ↑  signed by a key in
+<span class="muted">ES[n]</span>  Entity Configuration of the TRUST ANCHOR  <span class="muted">— self-signed · the root of trust</span></pre>
+      <p class="hint">The client can carry the pre-assembled chain in the <code>trust_chain</code> JWS header, or the AS walks
+      <code>authority_hints</code> up to the anchor itself (fetching each Subordinate Statement from the superior's
+      <code>federation_fetch_endpoint</code>). Either way the AS re-verifies <b>every</b> signature up to the anchor.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
+    <div class="hd"><h2>Roles, metadata policy &amp; trust marks — the anchor governs the ecosystem</h2></div>
+    <div class="bd">
+      <div class="pgrid">
+        <div class="pcard"><h3>Trust Anchor</h3><p>The root. Its keys are the basis of trust, distributed out-of-band. Issues
+          Subordinate Statements and exposes fetch / list / resolve. Two entities trust each other <b>iff their chains share one anchor</b>.</p></div>
+        <div class="pcard"><h3>Intermediate</h3><p>A superior that is itself subordinate to the anchor — it vouches for a
+          sub-tree. In the demo, <code>as</code> is an intermediate that issues Subordinate Statements for its own subordinates.</p></div>
+        <div class="pcard"><h3>Leaf</h3><p>An end entity — an agent type, an RP, an AS. Publishes only its Entity Configuration;
+          never a fetch or list endpoint.</p></div>
+      </div>
+      <p class="lab accent" style="margin:14px 0 4px">Metadata policy — the federation shapes what a member may declare</p>
+      <p class="muted" style="margin:0 0 6px">A Subordinate Statement can carry a <code>metadata_policy</code> that applies to
+      the subject <b>and everything below it</b>. Operators — <code>value</code>, <code>add</code>, <code>default</code>,
+      <code>one_of</code>, <code>subset_of</code>, <code>superset_of</code>, <code>essential</code> — let a superior
+      <b>constrain or set</b> a leaf's <i>effective</i> metadata: cap the scopes it may claim (<code>subset_of</code>), force a
+      value, require a field. Ecosystem rules are applied <b>at resolution</b>, without editing any member's own config.</p>
+      <p class="lab accent" style="margin:12px 0 4px">Trust marks — attested status &amp; compliance</p>
+      <p class="muted" style="margin:0 0 6px">A trust mark is a separately-signed JWT (<code>trust-mark+jwt</code>) asserting a
+      member conforms to a profile (e.g. <code>region-emea</code>, <code>workload-inspection</code>). It counts only if its
+      <b>issuer is one the anchor recognises</b> for that type <b>and</b> it validates (signature, expiry, status). So the AS
+      can gate not just on "is it in the federation" but "does it hold these attestations."</p>
+      <p class="hint"><b>In this demo:</b> the go-oidfed <b>lighthouse</b> is the Trust Anchor + resolver; a <b>fedhost</b>
+      serves each entity's self-signed configuration; the client presents/resolves its chain at the token endpoint and the AS
+      re-derives it to the anchor <b>live</b>. <b>Revocation</b> = the anchor deletes the leaf's Subordinate Statement → the
+      chain no longer resolves → the very next token fails. That is the ⑤&nbsp;Revoke step in the Deployment tab.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
     <div class="hd"><h2>Built on standards — not a bespoke scheme</h2></div>
     <div class="bd">
       <p class="desc">Every layer is a published specification, so the pieces interoperate and can be verified independently.</p>
