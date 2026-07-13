@@ -101,7 +101,8 @@
     <label class="opt"><input type="radio" name="mode" value="pop" checked> PoP mode</label>
     <label class="opt"><input type="radio" name="mode" value="dpop"> DPoP combined</label>
   </span>
-  <span class="row" data-tab="authz">
+  <!-- SD-JWT selective-disclosure toggle hidden for now (restore by removing style="display:none"). Plain JWT is forced. -->
+  <span class="row" data-tab="authz" style="display:none">
     <label class="opt"><input type="radio" name="enc" value="jwt" checked> Plain JWT</label>
     <label class="opt"><input type="radio" name="enc" value="sdjwt"> SD-JWT · selective disclosure</label>
   </span>
@@ -196,7 +197,7 @@
           <p class="muted">This is OAuth 2.0 Attestation-Based Client Authentication (draft-09) — a standard, not a bespoke scheme.</p></div>
         <div class="pcard"><p class="pn">05</p><h3>Workload identity (SPIFFE) is metadata, not auth</h3>
           <p>A SPIFFE SVID states <i>what</i> and <i>where</i> a workload is. It rides inside the attestation's
-          <code>workload</code> claim as attributes the AS can authorize on and selectively disclose — it does not authenticate.</p>
+          <code>workload</code> claim as attributes the AS can authorize on — it does not authenticate.</p>
           <p class="muted">Infrastructure identity informs authorization; it never replaces proof-of-possession.</p></div>
         <div class="pcard"><p class="pn">06</p><h3>A client is known by its federation identity</h3>
           <p>Registration is transparent or explicit (OIDF §12). <b>Automatic:</b> present your trust chain at the token
@@ -383,7 +384,7 @@
         <div class="pcard"><h3>DPoP · RFC 9449</h3><p class="muted" style="margin:6px 0 0">sender-constrained proof-of-possession — the combined-mode alternative to a separate PoP</p></div>
         <div class="pcard"><h3>RAR · RFC 9396</h3><p class="muted" style="margin:6px 0 0"><code>authorization_details</code> — fine-grained, per-resource authority instead of coarse scopes</p></div>
         <div class="pcard"><h3>Token Exchange · RFC 8693 + <code>act</code></h3><p class="muted" style="margin:6px 0 0">delegation with an actor claim — the agent acts on behalf of a principal, not as them</p></div>
-        <div class="pcard"><h3>SD-JWT · SPIFFE</h3><p class="muted" style="margin:6px 0 0">selective disclosure of attributes; a SPIFFE SVID as the workload's infrastructure identity (metadata)</p></div>
+        <div class="pcard"><h3>SPIFFE</h3><p class="muted" style="margin:6px 0 0">a SPIFFE SVID as the workload's infrastructure identity, carried as attestation metadata</p></div>
       </div>
     </div>
   </section>
@@ -430,12 +431,12 @@
       </g>
       <g class="edge" data-on="3">
         <path class="flow" d="M194,290 L194,328" marker-end="url(#ah)"/>
-        <text class="lbl" x="256" y="312">reveal entitled</text>
+        <text class="lbl" x="256" y="312">standing OK</text>
       </g>
       <!-- stage 4 -->
       <g class="edge" data-on="4">
         <path class="flow" d="M350,350 L650,186" marker-end="url(#ah)"/>
-        <text class="lbl" x="512" y="300">attestation + PoP / DPoP + disclosures</text>
+        <text class="lbl" x="512" y="300">attestation + PoP / DPoP proof</text>
       </g>
       <g class="edge" data-on="4">
         <path class="flow" d="M806,210 L806,226" marker-end="url(#ah)"/>
@@ -445,7 +446,7 @@
       </g>
       <g class="edge" data-on="4">
         <path class="flow" d="M650,202 L350,368" marker-end="url(#ah)"/>
-        <text class="lbl" x="500" y="388">access_token / error / insufficient_disclosure</text>
+        <text class="lbl" x="500" y="388">access_token / error</text>
       </g>
       <!-- verifier resolves the attester's trust chain via the trust controller -->
       <g class="edge" data-on="4">
@@ -466,13 +467,13 @@
       </g>
       <g class="node" data-on="3">
         <rect x="40" y="232" width="308" height="58" rx="8"/>
-        <text class="t1" x="194" y="257">Federation-gated disclosure</text>
-        <text class="t2" x="194" y="275">SD-JWT · reveal only entitled claims</text>
+        <text class="t1" x="194" y="257">Resolve target AS standing</text>
+        <text class="t2" x="194" y="275">trust controller · is the AS trusted?</text>
       </g>
       <g class="node" data-on="3,4">
         <rect x="40" y="328" width="308" height="58" rx="8"/>
-        <text class="t1" x="194" y="353">SD-JWT  +  PoP / DPoP proof</text>
-        <text class="t2" x="194" y="371">signed in browser · sd_hash binds it</text>
+        <text class="t1" x="194" y="353">Client Attestation  +  PoP / DPoP</text>
+        <text class="t2" x="194" y="371">signed in browser · cnf binds the key</text>
       </g>
 
       <!-- trust controller: resolved by the holder (target AS, stage 3) and the verifier (attester, stage 4) -->
@@ -705,8 +706,7 @@
         <div class="cap"><b>The attestation authenticates — and it's the two keys that do it:</b> the <b>type / attester key
           signs</b> the attestation (binding the instance's key as <code>cnf</code>, vouching for it), and the <b>instance
           key signs the PoP</b> (proving possession). The <b>SPIFFE SVID is not part of authentication</b> — its
-          <code>spiffe_id</code> + attributes ride in the <code>workload</code> claim as metadata the AS can authorize and
-          selectively disclose on.</div>
+          <code>spiffe_id</code> + attributes ride in the <code>workload</code> claim as metadata the AS can authorize on.</div>
       </section>
       <p class="lab accent" style="margin:14px 0 6px">Walk it through — in your browser</p>
       <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
@@ -998,8 +998,8 @@ function policyReveal(p){
 const CAPS = {
   1:"<b>Stage 1 — Generate keys.</b> The <b>attester</b> and <b>client-instance</b> keys are created in your browser. Nothing leaves the page yet.",
   2:"<b>Stage 2 — Fetch a challenge.</b> The browser POSTs to the <b>Challenge Servlet</b> in <code>oidf.war</code>; PingFederate returns a one-time, short-lived challenge.",
-  3:"<b>Stage 3 — Federation-gated disclosure.</b> In SD-JWT mode the holder resolves the <b>target AS live against the trust-controller anchor</b> (<code>/api/resolve</code> → trust controller <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) and builds the attestation as an SD-JWT, revealing only the claims the AS's standing entitles it to — everything else stays as salted <code>_sd</code> digests. The client key signs a PoP / DPoP proof whose <code>sd_hash</code> binds the exact disclosures. (Plain-JWT mode skips the disclosure step and sends every claim.)",
-  4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects (also enforcing any AS-side required disclosures)."
+  3:"<b>Stage 3 — Resolve standing &amp; build the attestation.</b> The holder resolves the <b>target AS live against the trust-controller anchor</b> (<code>/api/resolve</code> → trust controller <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) to confirm it's a trusted federation entity, then builds the <b>Client Attestation</b> carrying the client's <code>cnf</code> key. The client key signs a <b>PoP / DPoP</b> proof that binds the request to that key.",
+  4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects."
 };
 let CUR_STAGE = 1;
 function highlightStage(n){
