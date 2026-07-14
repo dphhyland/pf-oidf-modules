@@ -185,8 +185,11 @@
           <p class="muted">Onboarding is "join the federation" — trust is discoverable and verifiable, not a hand-configured secret.</p></div>
         <div class="pcard"><p class="pn">02</p><h3>Two tiers: the type vouches, the instance proves</h3>
           <p>An agent has a long-lived <b>type</b> — the federation entity that holds the vouching key and is what you govern,
-          register, and revoke — and many ephemeral <b>instances</b>, each with its own key that only proves possession.</p>
-          <p class="muted">Governance lives at the type; runtime proof at the instance. You revoke a type, not chase down instances.</p></div>
+          register, and revoke — and many ephemeral <b>instances</b>, each with its own key that only proves possession. Each
+          instance also carries its own attester-minted <code>agent_instance_id</code> — an identity <b>independent of its key</b>,
+          stable for the instance's lifetime, so every instance is individually attributable and revocable even across key rotation.</p>
+          <p class="muted">Governance lives at the type; runtime proof at the instance. You revoke a type, not chase down instances
+          — and <i>keys are binding material, not identity</i> (the AI Agent Instance profile).</p></div>
         <div class="pcard"><p class="pn">03</p><h3>Authentication is separate from authorization</h3>
           <p>Two questions, answered separately. <b>AuthN:</b> does the caller possess the keys it claims? <b>AuthZ:</b> given
           who it is, is it still vouched-for, active, and within the authority its type is registered for?</p>
@@ -278,17 +281,62 @@
     </div>
   </section>
   <section class="step open" data-tab="principles">
+    <div class="hd"><h2>The AI Agent Instance profile — a name for every instance</h2></div>
+    <div class="bd">
+      <p class="desc">When an agent platform registers as one OAuth client, a whole fleet of concurrent agent
+      <b>instances</b> collapses into a <b>single client identity</b> — so there's no per-instance policy, no audit attribution,
+      and no way to contain one compromised instance. The <b>AI Agent Instance profile</b>
+      (<code>draft-mcguinness-oauth-ai-agent-instance-00</code>) closes that gap: the <b>Agent Attester</b> mints a distinct,
+      stable, <b>key-independent</b> identity for each instance, and the AS surfaces it — with attestable provenance — in the
+      issued token.</p>
+
+      <p class="lab accent" style="margin:14px 0 6px">The claims it defines</p>
+      <div class="pgrid">
+        <div class="pcard"><h3><code>agent_instance_id</code> <span class="pill ok" style="font-size:10px">required</span></h3>
+          <p class="muted" style="margin:6px 0 0">the instance identity — attester-minted, unique, stable for the instance's
+          lifetime, and <b>not</b> derived from the proof-of-possession key. Keys rotate; the id doesn't.</p></div>
+        <div class="pcard"><h3><code>agent_platform</code> <span class="muted" style="font-size:10px">optional</span></h3>
+          <p class="muted" style="margin:6px 0 0">the orchestration runtime the instance executes under — software provenance,
+          not the OAuth <code>client_id</code>.</p></div>
+        <div class="pcard"><h3><code>agent_model</code> <span class="muted" style="font-size:10px">optional</span></h3>
+          <p class="muted" style="margin:6px 0 0"><code>{ id, version }</code> — the model backing the instance. A model change
+          requires fresh evidence.</p></div>
+        <div class="pcard"><h3><code>agent_runtime</code> <span class="muted" style="font-size:10px">optional</span></h3>
+          <p class="muted" style="margin:6px 0 0">an <code>eat</code> member (Entity Attestation Token, RFC&nbsp;9711) for
+          hardware-rooted evidence — consumed by the AS for policy, never surfaced to resource servers verbatim.</p></div>
+      </div>
+
+      <p class="hint" style="margin-top:12px"><b>Two carriers, one identity.</b> The evidence rides either in a
+      <b>Client Instance Assertion</b> or in a <b>Client Attestation</b>
+      (<code>draft-ietf-oauth-attestation-based-client-auth</code> + DPoP). <b>This demo uses the Client Attestation carrier</b>
+      — the exact ② flow decoded below — with the twist that <b>attester trust is resolved via OpenID&nbsp;Federation</b> rather
+      than a bilateral AS↔attester agreement. Either way the access token is sender-constrained and the instance is surfaced in
+      <code>act</code> (delegation) or top-level <code>sub</code> (self-acting), tagged
+      <code>sub_profile: "ai_agent client_instance"</code>.</p>
+
+      <p class="hint"><b>Advertised in metadata.</b> The client registers <code>ai_agent_instance_profile: true</code> (the AS then
+      requires instance evidence on every covered grant); the AS advertises <code>ai_agent_instance_profile_supported: true</code>.
+      Assurance comes in tiers — platform self-attestation, hardware-rooted (<code>agent_runtime</code> EAT), or an independent
+      third-party attester — and policy can condition on which.</p>
+    </div>
+  </section>
+  <section class="step open" data-tab="principles">
     <div class="hd"><h2>Anatomy of a delegated exchange — envelope vs actor, decoded</h2></div>
     <div class="bd">
       <p class="desc">The same split, on the wire (example values). The <b>attestation</b> carries the entitlement
-      <b>envelope</b> — what the type may ever do. A token exchange then mints an access token <b>narrowed to one task</b>
-      and stamped with the <b>actor chain</b> — on whose behalf — and sender-constrained to the instance key.</p>
-      <p class="lab accent" style="margin:14px 0 4px">① Client Attestation — signed by the <b>attester</b> (the type's key)</p>
+      <b>envelope</b> — what the type may ever do — plus the instance's <b>identity and provenance</b>. A token exchange then
+      mints an access token <b>narrowed to one task</b>, stamped with the <b>actor</b> — the agent <i>instance</i>, named by its
+      <code>agent_instance_id</code> and classified <code>ai_agent</code> per the <b>AI Agent Instance profile</b>
+      (<code>draft-mcguinness-oauth-ai-agent-instance</code>) — and sender-constrained to the instance key.</p>
+      <p class="lab accent" style="margin:14px 0 4px">① Client Attestation — the Agent Instance Evidence, signed by the <b>Agent Attester</b></p>
       <pre style="white-space:pre;word-break:normal;overflow-x:auto">{
-  "<span class="accent">iss</span>": "https://attester.example.com",         <span class="muted">// the attester — the type's vouching key</span>
-  "<span class="accent">sub</span>": "https://rp.example.com",               <span class="muted">// the client / agent type</span>
-  "<span class="accent">cnf</span>": { "jwk": { "kty":"EC", "crv":"P-256", "x":"…", "y":"…" } },   <span class="muted">// binds the INSTANCE key</span>
-  "workload": { "attested_by":"spiffe", "spiffe_id":"spiffe://banking.demo/payment-agent" },   <span class="muted">// metadata, not auth</span>
+  "<span class="accent">iss</span>": "https://attester.example.com",         <span class="muted">// the Agent Attester — vouches for the instance</span>
+  "<span class="accent">sub</span>": "https://rp.example.com",               <span class="muted">// the OAuth client = the Agent Platform (not the identity)</span>
+  "<b style="color:var(--warn)">agent_instance_id</b>": "https://attester.example.com/instances/sess-9f2c",  <span class="muted">// ← THE instance identity — attester-minted, key-independent</span>
+  "agent_platform": "urn:example:orchestrator:v5",   <span class="muted">// provenance — the runtime it executes under</span>
+  "agent_model": { "id": "urn:example:model:atlas", "version": "7.3" },   <span class="muted">// provenance — model + version</span>
+  "<span class="accent">cnf</span>": { "jwk": { "kty":"EC", "crv":"P-256", "x":"…", "y":"…" } },   <span class="muted">// binds the instance KEY — binding material, not identity</span>
+  "workload": { "attested_by":"spiffe", "spiffe_id":"spiffe://banking.demo/payment-agent" },   <span class="muted">// SPIFFE infra identity — provenance</span>
   "<b style="color:var(--warn)">authorization_details</b>": [                        <span class="muted">// ← the ENTITLEMENT ENVELOPE (the ceiling)</span>
     { "type":"sales_agent",
       "actions":["read_accounts","create_opportunity","submit_quote"],
@@ -296,25 +344,33 @@
       "sales_regions":["EMEA"], "privileges":["quota:standard"] } ]
 }</pre>
       <p class="hint">Plus a <b>PoP</b> signed by the instance's <code>cnf</code> key (<code>aud</code> = this AS, one-time
-      <code>jti</code>). Together they authenticate the instance under its vouched type — phase ① of the gate.</p>
-      <p class="lab accent" style="margin:16px 0 4px">② Access token — issued by the <b>AS</b>, narrowed + stamped with the actor</p>
+      <code>jti</code>). Together they authenticate the instance under its vouched type — phase ① of the gate. Mind the three
+      roles the draft keeps distinct: <code>agent_instance_id</code> is the <b>identity</b>, <code>cnf</code> is the <b>binding
+      key</b>, and <code>agent_platform</code> / <code>agent_model</code> / <code>workload</code> are <b>provenance</b>.</p>
+      <p class="lab accent" style="margin:16px 0 4px">② Access token — issued by the <b>AS</b>, narrowed + the instance surfaced in <code>act</code></p>
       <pre style="white-space:pre;word-break:normal;overflow-x:auto">{
   "iss": "https://as.bank.example",
   "<b style="color:var(--warn)">sub</b>": "https://principal.example/alice",      <span class="muted">// the PRINCIPAL — on whose behalf</span>
-  "<b style="color:var(--warn)">act</b>": { "sub": "spiffe://banking.demo/payment-agent" },   <span class="muted">// the ACTOR — the agent (delegation)</span>
-  "client_id": "https://rp.example.com",            <span class="muted">// the agent operator (the registered client)</span>
+  "<b style="color:var(--warn)">act</b>": {                                       <span class="muted">// the ACTOR — the agent INSTANCE (delegation)</span>
+    "iss": "https://attester.example.com",          <span class="muted">//   the Agent Attester that vouched (act.iss)</span>
+    "sub": "https://attester.example.com/instances/sess-9f2c",   <span class="muted">// = agent_instance_id — the instance, not the key</span>
+    "sub_profile": "ai_agent client_instance",      <span class="muted">//   classifies the actor as an AI agent instance</span>
+    "agent_model": { "id": "urn:example:model:atlas", "version": "7.3" },   <span class="muted">// provenance, surfaced per policy</span>
+    "cnf": { "jkt": "…" } },                         <span class="muted">//   sender-constrained to the instance key</span>
+  "client_id": "https://rp.example.com",            <span class="muted">// the Agent Platform (the registered client)</span>
   "scope": "create_opportunity",
   "<b style="color:var(--warn)">authorization_details</b>": [                        <span class="muted">// ⊆ the attested envelope, narrowed to THIS task</span>
     { "type":"sales_agent", "actions":["create_opportunity"],
       "locations":["https://crm.contoso.com/api"], "sales_regions":["EMEA"] } ],
-  "cnf": { "jkt": "…" },                             <span class="muted">// sender-constrained to the instance key</span>
+  "cnf": { "jkt": "…" },                             <span class="muted">// token sender-constrained to the instance key</span>
   "aud": "https://crm.contoso.com/api"
 }</pre>
       <p class="hint"><b>Read the two together.</b> The envelope in ① is the ceiling the attester vouched for; the token in
-      ② is <b>⊆</b> that envelope — narrowed to one action for one task. <code>sub</code> is the <b>principal</b>,
-      <code>act.sub</code> is the <b>agent</b>: the action is attributable to the agent <i>acting for</i> the principal,
-      never disguised as the principal (impersonation). <code>cnf</code> binds the token to the instance's key, so a stolen
-      bearer copy is useless.</p>
+      ② is <b>⊆</b> that envelope — narrowed to one action for one task. <code>sub</code> is the <b>principal</b>, and
+      <code>act</code> is the <b>agent instance</b>: <code>act.sub</code> is its <code>agent_instance_id</code>,
+      <code>act.iss</code> the Agent Attester that vouched, <code>act.sub_profile</code> classifies it <code>ai_agent
+      client_instance</code>. The action is attributable to <i>this instance acting for</i> the principal — never disguised as
+      the principal (impersonation). <code>cnf</code> binds the token to the instance's key, so a stolen bearer copy is useless.</p>
     </div>
   </section>
   <section class="step open" data-tab="principles">
@@ -381,6 +437,7 @@
       <div class="pgrid">
         <div class="pcard"><h3>OpenID Federation 1.0</h3><p class="muted" style="margin:6px 0 0">the trust spine — entity statements, subordinate statements, trust chains, resolution, §12 registration</p></div>
         <div class="pcard"><h3>OAuth Attestation-Based Client Auth · draft-09</h3><p class="muted" style="margin:6px 0 0">the client attestation + PoP that authenticate an instance under its type</p></div>
+        <div class="pcard"><h3>AI Agent Instance profile · draft-mcguinness-…-00</h3><p class="muted" style="margin:6px 0 0"><code>agent_instance_id</code> + provenance (<code>agent_platform</code>/<code>agent_model</code>), surfaced in <code>act</code> as <code>ai_agent client_instance</code></p></div>
         <div class="pcard"><h3>DPoP · RFC 9449</h3><p class="muted" style="margin:6px 0 0">sender-constrained proof-of-possession — the combined-mode alternative to a separate PoP</p></div>
         <div class="pcard"><h3>RAR · RFC 9396</h3><p class="muted" style="margin:6px 0 0"><code>authorization_details</code> — fine-grained, per-resource authority instead of coarse scopes</p></div>
         <div class="pcard"><h3>Token Exchange · RFC 8693 + <code>act</code></h3><p class="muted" style="margin:6px 0 0">delegation with an actor claim — the agent acts on behalf of a principal, not as them</p></div>
