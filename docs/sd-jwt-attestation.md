@@ -3,7 +3,7 @@
 Lets the Client Attestation be sent as an **SD-JWT** (selective-disclosure JWT) instead of a plain JWT, so the
 client discloses only the claims a given AS/domain needs — trimming the `workload` claim and revealing only the
 relevant `authorization_details` entry rather than the whole attested ceiling. It is an **encoding option under
-the same auth methods** (`attest_jwt_client_auth` / `attest_jwt_client_auth_dpop`), not a new method.
+the same auth method** (`attest_jwt_client_auth`, either PoP method), not a new method.
 
 ## Optionality (backward compatible)
 - **Auto-detected:** a plain attestation JWT has no `~`; an SD-JWT presentation is `issuer-jwt~disc~…~`. The

@@ -6,8 +6,9 @@ leaf endpoints, explicit client registration, and runtime trust-chain validation
 
 - OpenID Federation 1.0 (entity statements, subordinate fetch, list, resolve, explicit registration)
 - Runtime trust-chain validation of `private_key_jwt` client assertions
-- **Attestation-based client authentication** — `attest_jwt_client_auth` and
-  `attest_jwt_client_auth_dpop` ([draft-ietf-oauth-attestation-based-client-auth-09](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-09.html)),
+- **Attestation-based client authentication** — `attest_jwt_client_auth` with the
+  `attestation_pop_jwt` and `dpop_combined` proof-of-possession methods
+  ([draft-ietf-oauth-attestation-based-client-auth-10](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-10.html)),
   with the Client Attester trusted via the federation trust chain, a challenge endpoint for
   replay/freshness, and DPoP "combined mode" ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449))
 - **Optional SD-JWT attestation encoding** — the Client Attestation may be presented as an SD-JWT so the
@@ -121,9 +122,9 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
    ```bash
    curl -s https://<pf-host>:9031/.well-known/openid-federation | cut -d. -f2 | base64 -d | jq .metadata.openid_provider
    ```
-   You should see `attest_jwt_client_auth` and `attest_jwt_client_auth_dpop` in
-   `token_endpoint_auth_methods_supported`, the `*_signing_alg_values_supported` lists, and
-   `challenge_endpoint`.
+   You should see `attest_jwt_client_auth` in `token_endpoint_auth_methods_supported`,
+   `attestation_pop_jwt` and `dpop_combined` in `client_attestation_pop_methods_supported`,
+   the `*_signing_alg_values_supported` lists, and `challenge_endpoint`.
 
 ---
 
@@ -150,7 +151,8 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `ignoreSslErrors` | `false` | Disable TLS verification for federation fetches (**dev only**) |
 | `signingAlgorithm` | `RS256` | `RS256` or `PS256` |
 | `corsEnabled` / `corsAllowOrigin` / `corsAllowMethods` / `corsAllowHeaders` / `corsMaxAge` | see code | CORS for federation GETs |
-| `tokenEndpointAuthMethodsSupported` | `private_key_jwt,attest_jwt_client_auth,attest_jwt_client_auth_dpop` | Advertised auth methods |
+| `tokenEndpointAuthMethodsSupported` | `private_key_jwt,attest_jwt_client_auth` | Advertised auth methods |
+| `clientAttestationPopMethodsSupported` | `attestation_pop_jwt,dpop_combined` | Advertised PoP methods (`client_attestation_pop_methods_supported`) |
 | `clientAttestationSigningAlgValuesSupported` | `RS256,PS256,ES256` | Advertised attestation algs |
 | `clientAttestationPopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised PoP algs |
 | `dpopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised DPoP algs |
@@ -196,7 +198,8 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 ## Enabling attestation-based client authentication
 
 1. **Register the client** at `/federation/register` with RP metadata
-   `token_endpoint_auth_method` = `attest_jwt_client_auth` or `attest_jwt_client_auth_dpop`. The
+   `token_endpoint_auth_method` = `attest_jwt_client_auth` (either PoP method — the mode is chosen
+   per request by which proof header the client presents). The
    module registers it as a **public client** (`ClientAuthenticationType.NONE`) and sets the
    `attestation_required=true` extended property. (Other clients keep `private_key_jwt`.)
 
@@ -224,7 +227,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 
 ## Client request format
 
-**PoP-JWT mode** (`attest_jwt_client_auth`) — token request carries two headers:
+**PoP-JWT mode** (PoP method `attestation_pop_jwt`) — token request carries two headers:
 
 ```
 POST /as/token.oauth2 HTTP/1.1
@@ -235,7 +238,7 @@ OAuth-Client-Attestation-PoP: <PoP JWT>                 typ=oauth-client-attesta
 - **Attestation JWT**: `iss`=Attester, `sub`=`client_id`, `exp`, `cnf.jwk`=instance public key.
 - **PoP JWT** (signed by the instance key): `aud`=AS issuer/token endpoint, `jti`, `iat`, optional `challenge`.
 
-**DPoP combined mode** (`attest_jwt_client_auth_dpop`) — the DPoP proof *is* the PoP (no PoP header):
+**DPoP combined mode** (PoP method `dpop_combined`) — the DPoP proof *is* the PoP (no PoP header):
 
 ```
 POST /as/token.oauth2 HTTP/1.1

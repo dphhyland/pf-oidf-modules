@@ -1,7 +1,7 @@
 # Attestation client-auth test harness
 
 Exercises the OAuth 2.0 Attestation-Based Client Authentication module
-(`draft-ietf-oauth-attestation-based-client-auth-09`) — both the deployed
+(`draft-ietf-oauth-attestation-based-client-auth-10`) — both the deployed
 servlet and the verification logic.
 
 ## Pieces
