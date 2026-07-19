@@ -87,7 +87,7 @@ from `art01.corp.pingidentity.com`, which is unreachable. Build instead against 
        -Dcheckstyle.skip=true -Dmaven.compiler.proc=none
    ```
 
-Result: **39 unit tests pass**, thin **~109K** jar
+Result: **the full unit-test suite passes**, thin **~109K** jar
 (`target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`); jose4j/jackson not shaded.
 
 ### 2.1 Decompilation artifacts fixed to make it compile
