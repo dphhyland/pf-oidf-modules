@@ -230,3 +230,28 @@ seconds (and the same SET on the Kafka topic when enabled).
   verify → poll → ack flow above and checks the verification SET comes back.
 - `harness/run.sh ssf-selfverify` — mints a CAEP `session-revoked` SET in-process with the module's
   `SetMinter` and verifies its signature + claims (typ `secevent+jwt`, `events`, `sub_id`) — no PF, no network.
+
+## Receiver (inbound SETs)
+
+The module is also an SSF **receiver**: it accepts SETs from another transmitter, verifies them, and acts.
+
+- **Push endpoint (RFC 8935):** `POST /ssf/receiver/events` (`application/secevent+jwt`) — verified
+  against the transmitter's JWKS (`SetVerifier`, kid-rotation refresh), deduped by `jti` (idempotent 202),
+  spec `{"err": ...}` errors. Optionally bearer-gated. `GET` on the same path lists recent received events.
+- **Poll client (RFC 8936):** set `receiverPollUrl` (+`receiverPollToken`) to pull from a remote
+  transmitter's poll endpoint — poll → receive → ack next cycle; unverifiable SETs are acked (no
+  redelivery loops).
+- **Actions:** a verified CAEP `session-revoked` / RISC `account-disabled` /
+  `account-credential-change-required` **revokes the subject's OAuth grants in PF**
+  (`AccessGrantManagerAccessor`); disable with `receiverActionsEnabled=false`.
+- **Registration:** `ReceiverStreamClient` registers this receiver at a remote transmitter (create
+  push/poll stream, add subjects, request verification).
+
+Config (`OIDF_SSF_RECEIVER_*`): `receiverExpectedIssuer` (turns the receiver on), `receiverJwksUrl`
+(default `<issuer>/pf/JWKS`), `receiverAudience`, `receiverEndpointAuthToken`, `receiverJwksCacheSeconds`,
+`receiverInsecureTls`, `receiverPollUrl`, `receiverPollToken`, `receiverPollIntervalSeconds`,
+`receiverActionsEnabled`.
+
+Proven live by the demo's loopback stage: a logout on the demo PF → the transmitter's push executor
+POSTs the signed SET to the same PF's receiver endpoint → verified against `/pf/JWKS` → grant-revocation
+action runs.
