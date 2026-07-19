@@ -53,6 +53,17 @@ Connections come from PF's own pool (`com.pingidentity.access.DataSourceAccessor
 its own pool. Leave `dataStoreId` blank to use the in-memory store (per-node, **not** cluster-safe, lost on
 restart — the same caveat as the attestation caches; dev/single-node only).
 
+`storeDialect` selects the persistence layout behind that data store:
+
+- **`tables`** (default) — the module's own three `ssf_*` tables below, DDL applied on boot.
+- **`ldm`** — the **ID Partners Identity Object Model** (Postgres JSONB entry store): streams, subjects,
+  and pending SETs become `ssfStream` / `ssfStreamSubject` / `ssfPendingSet` object-class entries
+  (`LdmSsfStore`). Stream id = `entry_uuid`; membership is containment (`parent_id` = stream) with
+  `subject_id` = the RFC 9493 canonical key — the same subject key the model's grants and authorisation
+  records use, so stream membership joins to the identity's wider state. The schema is owned by the model
+  repo's migration workflow (`migrations/0001-add-shared-signals-ssf.sql` there registers the classes,
+  vocabularies, and queue indexes); this store never creates tables. Postgres-specific.
+
 The store applies this DDL on boot if the tables are absent (portable subset; tune types per engine):
 
 ```sql
