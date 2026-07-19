@@ -25,12 +25,25 @@ against the transmitter's advertised `jwks_uri` = `<issuer>/pf/JWKS`.
 Receiver authentication: every `/ssf/*` request carries an OAuth **bearer token PF itself issued**
 (client_credentials, scope `ssf.manage` by default), validated by PF token introspection (RFC 7662).
 
-## Configuration (servlet init-params)
+## Configuration (init-param · system property · env var)
 
-`issuer` (required), `signingAlgorithm` (RS256/PS256), `basePath` (default `/ssf`), `dataStoreId`,
-`receiverScope` (default `ssf.manage`), `introspectionEndpoint`/`introspectionClientId`/
-`introspectionClientSecret`, `pushRetryMaxAttempts`, `pushRetryBackoffSeconds`, `pollMaxEvents`,
-`setTtlSeconds`, `defaultEventTypes`, `verificationEventEnabled`, and the Kafka knobs below.
+Each setting resolves from, in order: the servlet **`init-param`** (web.xml), the **system property**
+`oidf.ssf.<name>` (PingFederate loads `run.properties` entries as system properties), then the **env var**
+`OIDF_SSF_<UPPER_SNAKE(name)>`. So when the module is annotation-mapped inside `pf-runtime.war` (no web.xml),
+configure it via `run.properties` or Railway env vars — e.g. `OIDF_SSF_ISSUER`,
+`OIDF_SSF_KAFKA_BOOTSTRAP_SERVERS`, `OIDF_SSF_INTROSPECTION_CLIENT_SECRET`.
+
+Settings: `issuer` (**required — setting it turns the transmitter on at boot**), `signingAlgorithm`
+(RS256/PS256), `basePath` (default `/ssf`), `dataStoreId`, `receiverScope` (default `ssf.manage`),
+`introspectionEndpoint`/`introspectionClientId`/`introspectionClientSecret`, `pushRetryMaxAttempts`,
+`pushRetryBackoffSeconds`, `pollMaxEvents`, `setTtlSeconds`, `defaultEventTypes`, `verificationEventEnabled`,
+and the Kafka knobs below.
+
+**Fail-soft:** if `issuer` is unset, the SSF servlets stay disabled (their endpoints 500) but PF is
+unaffected — the transmitter never breaks the runtime web app. When `issuer` is set, the config servlet
+(load-on-startup) configures the transmitter at boot, so the logout filter emits immediately. The
+logout → `caep.session-revoked` signal needs only `OIDF_SSF_ISSUER`; receiver-authenticated endpoints
+(stream mgmt / poll / SCIM) also need the introspection client credentials.
 
 ## Persistence — PF-configured JDBC data store
 
