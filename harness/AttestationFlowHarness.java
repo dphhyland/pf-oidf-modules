@@ -1,6 +1,6 @@
 /*
  * Test harness for the OAuth 2.0 Attestation-Based Client Authentication module
- * (draft-ietf-oauth-attestation-based-client-auth-09) deployed in PingFederate.
+ * (draft-ietf-oauth-attestation-based-client-auth-10) deployed in PingFederate.
  *
  * Two modes:
  *
@@ -125,14 +125,14 @@ public final class AttestationFlowHarness {
         System.out.println("    requesting : " + requestedRar);
         System.out.println("[3] built PoP JWT (typ=" + POP_TYP + ") and DPoP proof (typ=" + DPOP_TYP + ")");
         System.out.println();
-        System.out.println("---- PoP-mode request headers (attest_jwt_client_auth) ----");
+        System.out.println("---- PoP-mode request headers (attestation_pop_jwt) ----");
         System.out.println("OAuth-Client-Attestation: " + attestation);
         System.out.println("OAuth-Client-Attestation-PoP: " + pop);
         System.out.println();
         System.out.println("---- ready-to-run curl (PoP mode) ----");
         System.out.println(curl(tokenEndpoint, clientId, "OAuth-Client-Attestation-PoP", pop, attestation, requestedRar));
         System.out.println();
-        System.out.println("---- DPoP combined-mode (attest_jwt_client_auth_dpop) ----");
+        System.out.println("---- DPoP combined-mode (dpop_combined) ----");
         System.out.println(curl(tokenEndpoint, clientId, "DPoP", dpop, attestation, requestedRar));
 
         // Execute the PoP-mode token request to demonstrate LIVE RFC 9396 enforcement.

@@ -24,10 +24,11 @@ a live PF instance, (5) deploying to Railway.
 ## 1. The extension code
 
 Implements **OAuth 2.0 Attestation-Based Client Authentication**
-(`draft-ietf-oauth-attestation-based-client-auth-09`), both PoP variants:
+(`draft-ietf-oauth-attestation-based-client-auth-10`), auth method
+`attest_jwt_client_auth` with both PoP methods:
 
-- `attest_jwt_client_auth` — dedicated PoP JWT
-- `attest_jwt_client_auth_dpop` — DPoP combined mode (DPoP `jwk` must equal the
+- `attestation_pop_jwt` — dedicated PoP JWT
+- `dpop_combined` — DPoP combined mode (DPoP `jwk` must equal the
   attestation `cnf`)
 
 **Framework-agnostic core** (`common/`):
