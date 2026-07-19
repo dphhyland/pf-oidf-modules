@@ -111,6 +111,30 @@ SETs: session revoked/logout → `caep.session-revoked`; credential change → `
 account disabled/enabled (e.g. from provisioning) → RISC `account-disabled`/`account-enabled`. Each event
 fans out to every ENABLED stream that delivers the event type and holds the subject.
 
+### Logout → `caep.session-revoked` (wired)
+
+`LogoutEventFilter` filters PF's OIDC end-session endpoint (`/idp/init_logout.openid`): it reads the subject
+from the request's `id_token_hint` (or a back-channel `logout_token`, or an explicit `sub`), lets PF perform
+the logout, then calls `SsfEventBridge.onSessionRevoked(...)`. It is fail-open — sign-out proceeds even if
+extraction or signalling throws. Like `TokenEndpointAutoRegistrationFilter`, that endpoint is served by PF's
+core `pf-runtime.war` (a different context from the module's `oidf.war`), so the filter is registered in
+**`pf-runtime.war`'s `WEB-INF/web.xml`** (the module jar is already injected into its `WEB-INF/lib`):
+
+```xml
+<filter>
+  <filter-name>SsfLogoutSignal</filter-name>
+  <filter-class>com.pingidentity.ps.oidf.servlet.ssf.LogoutEventFilter</filter-class>
+</filter>
+<filter-mapping>
+  <filter-name>SsfLogoutSignal</filter-name>
+  <url-pattern>/idp/init_logout.openid</url-pattern>
+</filter-mapping>
+```
+
+Other PF events (credential change, provisioning-driven disable/enable) call the corresponding
+`SsfEventBridge` methods from their own hook (an OGNL criterion, a provisioning notification, or the SCIM
+servlet, which already emits RISC `account-disabled` on deprovision).
+
 ## SCIM subject management
 
 Provisioning drives who is monitored. `POST`/`PUT` a SCIM user carrying the SSF extension to make it a
