@@ -118,7 +118,7 @@ from the request's `id_token_hint` (or a back-channel `logout_token`, or an expl
 the logout, then calls `SsfEventBridge.onSessionRevoked(...)`. It is fail-open — sign-out proceeds even if
 extraction or signalling throws. Like `TokenEndpointAutoRegistrationFilter`, that endpoint is served by PF's
 core `pf-runtime.war` (a different context from the module's `oidf.war`), so the filter is registered in
-**`pf-runtime.war`'s `WEB-INF/web.xml`** (the module jar is already injected into its `WEB-INF/lib`):
+**`pf-runtime.war`'s `WEB-INF/web.xml`**:
 
 ```xml
 <filter>
@@ -130,6 +130,12 @@ core `pf-runtime.war` (a different context from the module's `oidf.war`), so the
   <url-pattern>/idp/init_logout.openid</url-pattern>
 </filter-mapping>
 ```
+
+The **build-in-CI** deploy applies this automatically: `deploy/pingfederate/build/assemble-pf-runtime-war.sh`
+injects the module jar into `pf-runtime.war`'s `WEB-INF/lib` **and** this filter mapping into its `web.xml`
+(idempotent, existing filters preserved). The alternative loose-jar `Dockerfile` deploy (stock `pf-runtime.war`
++ `deploy/*.jar`) does not reassemble the runtime war, so it would need to adopt the assembled war to pick up
+the filter.
 
 Other PF events (credential change, provisioning-driven disable/enable) call the corresponding
 `SsfEventBridge` methods from their own hook (an OGNL criterion, a provisioning notification, or the SCIM
