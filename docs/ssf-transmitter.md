@@ -111,5 +111,68 @@ SETs: session revoked/logout → `caep.session-revoked`; credential change → `
 account disabled/enabled (e.g. from provisioning) → RISC `account-disabled`/`account-enabled`. Each event
 fans out to every ENABLED stream that delivers the event type and holds the subject.
 
-_A curl walkthrough of the receiver flow (read config → create poll stream → add subject → verify →
-poll + ack) and the harness live-mode land with Phase 5._
+## SCIM subject management
+
+Provisioning drives who is monitored. `POST`/`PUT` a SCIM user carrying the SSF extension to make it a
+subject of the named streams; `active:false` or `DELETE` removes it everywhere and emits RISC
+`account-disabled`. Wire `/ssf/scim/v2/Users` as an inbound SCIM target in PF like any SCIM app.
+
+```sh
+# provision alice as a subject of stream $SID
+curl -sk -X POST "$BASE/ssf/scim/v2/Users" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/scim+json' -d '{
+  "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User",
+              "urn:ietf:params:scim:schemas:extension:ssf:2.0:Subject"],
+  "userName": "alice",
+  "emails": [{"value": "alice@example.com", "primary": true}],
+  "urn:ietf:params:scim:schemas:extension:ssf:2.0:Subject": {"streams": ["'"$SID"'"]}
+}'
+# deprovision (removes from all streams + emits RISC account-disabled); id is the subject canonical key
+curl -sk -X DELETE "$BASE/ssf/scim/v2/Users/email:alice@example.com" -H "Authorization: Bearer $TOKEN"
+```
+
+## Receiver flow (curl) — acceptance walkthrough
+
+`$BASE` is where the SSF servlets serve (e.g. `https://<host>:9031/oidf`); `$TOKEN` is a PF-issued bearer
+with scope `ssf.manage` (client_credentials). `harness/probe-ssf.sh` runs this end-to-end.
+
+```sh
+# 1. read transmitter metadata
+curl -sk "$BASE/.well-known/ssf-configuration" | jq
+
+# 2. create a poll stream
+STREAM=$(curl -sk -X POST "$BASE/ssf/streams" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' -d '{
+  "aud": "https://receiver.example.com",
+  "delivery": {"method": "urn:ietf:rfc:8936"},
+  "events_requested": ["https://schemas.openid.net/secevent/caep/event-type/session-revoked"]}')
+SID=$(echo "$STREAM" | jq -r .stream_id)
+
+# 3. add a subject
+curl -sk -X POST "$BASE/ssf/subjects:add" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"stream_id":"'"$SID"'","subject":{"format":"email","email":"alice@example.com"}}'
+
+# 4. request a verification SET (echoes state)
+curl -sk -X POST "$BASE/ssf/verify" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"stream_id":"'"$SID"'","state":"check-123"}'
+
+# 5. poll it back
+POLL=$(curl -sk -X POST "$BASE/ssf/poll?stream_id=$SID" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"maxEvents":10,"returnImmediately":true}')
+echo "$POLL" | jq
+JTI=$(echo "$POLL" | jq -r '.sets | keys[0]')
+
+# 6. ack it — the next poll no longer returns it
+curl -sk -X POST "$BASE/ssf/poll?stream_id=$SID" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"ack":["'"$JTI"'"]}'
+```
+
+With push delivery configured instead (`"delivery":{"method":"urn:ietf:rfc:8935","endpoint_url":"…"}`), a
+PF logout for a subject results in a signed `caep.session-revoked` SET POSTed to the receiver within
+seconds (and the same SET on the Kafka topic when enabled).
+
+## Harness
+
+- `harness/probe-ssf.sh <base-url> [bearer-token]` — contract-tests `/.well-known/ssf-configuration`
+  (asserts the SSF-mandated fields), and, when a bearer token is supplied, runs the full create → add →
+  verify → poll → ack flow above and checks the verification SET comes back.
+- `harness/run.sh ssf-selfverify` — mints a CAEP `session-revoked` SET in-process with the module's
+  `SetMinter` and verifies its signature + claims (typ `secevent+jwt`, `events`, `sub_id`) — no PF, no network.

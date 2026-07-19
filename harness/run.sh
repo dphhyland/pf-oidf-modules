@@ -34,6 +34,18 @@ for a in core/jackson-core core/jackson-databind core/jackson-annotations; do
 done
 
 OUT="$HERE/out"; mkdir -p "$OUT"
+
+# SSF in-process self-verify (mint + verify a CAEP SET with the module's real SetMinter). Needs the jar.
+if [[ "${1:-}" == "ssf-selfverify" ]]; then
+  if [[ -z "${MODULE_JAR:-}" || ! -f "${MODULE_JAR:-}" ]]; then
+    echo "ERROR: ssf-selfverify needs the built module jar. Run 'mvn -Dassembly.skipAssembly=true package' first," >&2
+    echo "       or set MODULE_JAR=/path/to/pf-oidf-modules-0.0.1-SNAPSHOT.jar" >&2
+    exit 1
+  fi
+  javac -cp "$CP" -d "$OUT" "$HERE/SsfSelfVerify.java"
+  exec java -cp "$OUT:$CP" SsfSelfVerify
+fi
+
 javac -cp "$CP" -d "$OUT" "$HERE/AttestationFlowHarness.java"
 
 if [[ "${1:-selfverify}" == "selfverify" && ( -z "${MODULE_JAR:-}" || ! -f "${MODULE_JAR:-}" ) ]]; then
