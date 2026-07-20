@@ -46,6 +46,17 @@ if [[ "${1:-}" == "ssf-selfverify" ]]; then
   exec java -cp "$OUT:$CP" SsfSelfVerify
 fi
 
+# Attestation issuance in-process self-verify (SVID -> minted attestation -> verified). Needs the jar.
+if [[ "${1:-}" == "issuance-selfverify" ]]; then
+  if [[ -z "${MODULE_JAR:-}" || ! -f "${MODULE_JAR:-}" ]]; then
+    echo "ERROR: issuance-selfverify needs the built module jar. Run 'mvn -Dassembly.skipAssembly=true package' first," >&2
+    echo "       or set MODULE_JAR=/path/to/pf-oidf-modules-0.0.1-SNAPSHOT.jar" >&2
+    exit 1
+  fi
+  javac -cp "$CP" -d "$OUT" "$HERE/AttestationIssuanceHarness.java"
+  exec java -cp "$OUT:$CP" AttestationIssuanceHarness
+fi
+
 javac -cp "$CP" -d "$OUT" "$HERE/AttestationFlowHarness.java"
 
 if [[ "${1:-selfverify}" == "selfverify" && ( -z "${MODULE_JAR:-}" || ! -f "${MODULE_JAR:-}" ) ]]; then
