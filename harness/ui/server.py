@@ -50,6 +50,25 @@ TOKEN_ENDPOINT = os.environ.get("TOKEN_ENDPOINT", PF_ORIGIN + "/as/token.oauth2"
 # checks aud against PF's *configured* runtime base URL (not the request host / external proxy), so behind a
 # TCP proxy this differs from TOKEN_ENDPOINT. Override with PF_TOKEN_AUD (e.g. https://localhost:9031/as/token.oauth2).
 PF_TOKEN_AUD = os.environ.get("PF_TOKEN_AUD", TOKEN_ENDPOINT)
+# Attestation ISSUANCE servlet — the hosted attester. A SPIFFE workload POSTs its JWT-SVID + instance-key
+# proof and PF mints a Client Attestation, signing with the client's per-client attester key. Merged into
+# pf-runtime.war at the ROOT context (like /as/token.oauth2), so built from PF_ORIGIN, not PF_BASE.
+ATTESTATION_URL = os.environ.get("PF_ATTESTATION_URL", PF_ORIGIN + "/federation/attestation")
+# The demo attester identity: the minted attestation's `iss` AND the required SVID `aud`. Both demo
+# clients share it; the toggle only switches which client (hence which signer) mints.
+ATTESTER_ISSUER = os.environ.get("ATTESTER_ISSUER", "https://attester.example.com")
+# The two demo clients: their attestation_* extended properties select the signer — an inline JWK vs an
+# OpenBao transit key (the "key in config" vs "key never leaves the vault" contrast the toggle shows).
+DEMO_CLIENT_INLINE = os.environ.get("DEMO_CLIENT_INLINE", "demo-attest-inline")
+DEMO_CLIENT_VAULT = os.environ.get("DEMO_CLIENT_VAULT", "demo-attest-vault")
+DEMO_SPIFFE_ID = os.environ.get("DEMO_SPIFFE_ID", "spiffe://banking.demo/payment-agent")
+# Fixed demo SPIFFE trust-domain private key (EC P-256). The browser signs demo JWT-SVIDs with it; its
+# PUBLIC half is provisioned as each client's attestation_spiffe_bundle. Demo-only — override via env.
+DEMO_TD_PRIVATE_JWK = json.loads(os.environ.get("DEMO_TD_PRIVATE_JWK", json.dumps({
+    "kty": "EC", "kid": "7ijwHrcSPSmDv-UfM3wlQEgpdZJDrM4yYU1XUtiXsHM", "crv": "P-256",
+    "x": "Kp2RkAdN8-BTBWXMvgYlJpWq-ccIsxtvOzINuaFvUbQ",
+    "y": "ceNtnwRomicS7uydIiiK1Mq4zE_SAPMj5QQQbVn0qG4",
+    "d": "eRNdVIMYT8fY90MGm8iOWDJ-wrDd1aB8qiJNlGQDtVQ"})))
 # Admin console (for the "Open PingFederate Console" link). Local default.
 CONSOLE_URL = os.environ.get("CONSOLE_URL", "https://localhost:19999/pingfederate/app")
 # Live PF activity logs (optional): pull pingfederate-runtime's emitted logs via Railway's GraphQL API so
@@ -504,6 +523,12 @@ class Handler(BaseHTTPRequestHandler):
                 "software_version": SOFTWARE_VERSION,
                 "trust_controller": TRUST_CONTROLLER,
                 "workload_url": WORKLOAD_URL,
+                "attestation_url": ATTESTATION_URL,
+                "attester_issuer": ATTESTER_ISSUER,
+                "client_id_inline": DEMO_CLIENT_INLINE,
+                "client_id_vault": DEMO_CLIENT_VAULT,
+                "spiffe_id": DEMO_SPIFFE_ID,
+                "demo_td_private_jwk": DEMO_TD_PRIVATE_JWK,
             }))
         elif self.path.startswith("/api/resolvesub"):
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -576,6 +601,16 @@ class Handler(BaseHTTPRequestHandler):
             headers.setdefault("Content-Type", "application/x-www-form-urlencoded")
             status, body, hdrs = pf_post(TOKEN_ENDPOINT, data=data, headers=headers)
             self._send(200, json.dumps({"status": status, "body": body}))
+        elif self.path == "/api/mint":
+            # The hosted attester (issuance servlet). The browser sends {client_id, instance_key (public
+            # JWK), svid, proof, authorization_details?}; PF validates the SVID against the client's SPIFFE
+            # bundle + the instance-key proof, then mints and signs a Client Attestation with that client's
+            # attester key (inline JWK or OpenBao transit). Forward the JSON body verbatim.
+            payload = json.loads(raw or b"{}")
+            status, body, hdrs = pf_post(ATTESTATION_URL, data=json.dumps(payload).encode(),
+                                         headers={"Content-Type": "application/json"})
+            self._send(200, json.dumps({"status": status, "body": body,
+                                        "content_type": hdrs.get("Content-Type", "")}))
         elif self.path == "/api/register-explicit":
             # OpenID Federation §12.2 explicit registration: the client POSTs its self-signed entity
             # configuration to PF's /federation/register with media type application/entity-statement+jwt.

@@ -898,6 +898,30 @@
     </div>
   </section>
 
+  <!-- Phase 3 — the hosted attester (server-side minting) — #mint -->
+  <section class="step open" id="mint" data-tab="deploy" style="margin-top:26px">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">3</span>
+      <h2>Mint an attestation from a SPIFFE SVID — the hosted attester</h2>
+      <span class="s" id="mintStatus"></span></div>
+    <div class="bd">
+      <p class="desc"><b>Phase 3 — issuance moves to the server.</b> In Phase 2 the browser <i>was</i> the attester — it
+      signed the Client Attestation itself. Here the workload owns only its <b>instance key</b> and a <b>SPIFFE JWT-SVID</b>;
+      it presents them to PingFederate's <code>/federation/attestation</code> endpoint — the <b>hosted attester</b> — which
+      validates the SVID against the client's configured SPIFFE bundle, checks the SPIFFE ID is bound to the client, verifies
+      the instance-key proof, and <b>mints + signs</b> the attestation with that client's <b>own attester key</b>: an inline
+      JWK, or an <b>OpenBao transit key whose private half never leaves the vault</b>. The workload never signs the
+      attestation and never holds the attester key.</p>
+      <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+        <span class="row" style="gap:12px" title="Which demo client mints — the two differ only in where the attester key lives">
+          <label class="opt"><input type="radio" name="signer" value="inline" checked> inline JWK · key in client config</label>
+          <label class="opt"><input type="radio" name="signer" value="openbao"> OpenBao transit · key stays in the vault</label>
+        </span>
+        <button id="mintRun">▶ Run — mint SVID, POST to the attester, decode the minted attestation</button>
+      </div>
+      <div id="mintOut"></div>
+    </div>
+  </section>
+
   <!-- AS-side federation client authentication -->
   <section class="step open" id="fedauth" data-tab="authz" style="margin-top:26px">
     <div class="hd"><span class="n" style="font-size:10px;font-weight:700">AS</span>
@@ -1268,6 +1292,80 @@ async function runSpiffe(){
   }catch(e){ push(`<div style="margin:8px 0"><span class="pill err">error</span> <span class="muted">${(e&&e.message)||e}</span></div>`); setStatus('#spiffeStatus','error',''); }
 }
 { const b = $('#spiffeRun'); if(b) b.onclick = runSpiffe; }
+
+// ── Phase 3 — the hosted attester: a SPIFFE SVID → a server-minted Client Attestation (POST /api/mint) ──
+function signerChoice(){ const el=document.querySelector('input[name=signer]:checked'); return el?el.value:'inline'; }
+let LAST_MINT = null;
+async function mintHosted(){
+  const out = $('#mintOut'); out.innerHTML=''; LAST_MINT=null;
+  const push = h => out.insertAdjacentHTML('beforeend', h);
+  setStatus('#mintStatus','running…');
+  try{
+    const issuer = CFG.attester_issuer || 'https://attester.example.com';
+    const spiffeId = CFG.spiffe_id || 'spiffe://banking.demo/payment-agent';
+    const useVault = signerChoice()==='openbao';
+    const clientId = useVault ? (CFG.client_id_vault||'demo-attest-vault') : (CFG.client_id_inline||'demo-attest-inline');
+    // ① the fixed demo trust-domain key signs the workload's JWT-SVID; its PUBLIC half is the client's attestation_spiffe_bundle
+    const tdJwk = CFG.demo_td_private_jwk;
+    if(!tdJwk){ throw new Error('demo trust-domain key missing from /config'); }
+    const tdKey = { privateKey: await crypto.subtle.importKey('jwk', tdJwk, {name:'ECDSA',namedCurve:'P-256'}, false, ['sign']) };
+    const now = Math.floor(Date.now()/1000);
+    const svidToken = await jws(tdKey, {alg:'ES256', typ:'JWT', kid: tdJwk.kid},
+        {sub: spiffeId, aud:[issuer], iat: now, exp: now+300});
+    push(artBlock('① Workload’s JWT-SVID — signed by the trust domain (<code>aud</code> = the attester)', svidToken, decode(svidToken)));
+    // ② the workload's own instance key — becomes cnf; it never signs the attestation
+    const instanceKey = await genKey();
+    const cnfJwk = await pubJwk(instanceKey);
+    const instKid = await jwkThumb(cnfJwk);
+    // ③ instance-key proof of possession (binds cnf to a key the caller demonstrably holds)
+    const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
+    const proof = await jws(instanceKey, {alg:'ES256', typ:'oauth-attestation-instance-proof+jwt', kid: instKid},
+        {aud: issuer, jti, iat: now});
+    push(artBlock('② Instance-key proof of possession (<code>typ oauth-attestation-instance-proof+jwt</code>)', proof, decode(proof)));
+    // ④ present to the hosted attester
+    const reqBody = { client_id: clientId, instance_key: cnfJwk, svid: svidToken, proof };
+    push(`<p class="lab accent" style="margin-top:14px">③ POST <code>/federation/attestation</code> — client <code>${clientId}</code></p><pre class="muted">${pretty(reqBody)}</pre>`);
+    const r = await fetch('/api/mint',{method:'POST',headers:{'Content-Type':'application/json'}, body:j(reqBody)}).then(x=>x.json());
+    let body; try{ body = JSON.parse(r.body); }catch{ body = r.body; }
+    const ok = r.status===200 && body && body.attestation;
+    if(ok){
+      const att = body.attestation, dec = decode(att), kid = dec.header.kid||'';
+      const badge = useVault
+        ? `<span class="pill ok">signed by OpenBao transit · kid ${kid} · private key never left the vault</span>`
+        : `<span class="pill ok">signed by inline JWK · kid ${kid}</span>`;
+      push(`<p class="lab accent" style="margin-top:14px">④ Minted Client Attestation ${badge}</p>`);
+      push(artBlock('The attester bound the instance key as <code>cnf</code>, folded the SVID into <code>workload</code>, and signed', att, dec));
+      const wl = dec.payload.workload||{};
+      push(`<p class="hint"><code>cnf.jwk</code> = the instance key the workload holds · <code>workload.spiffe_id</code> = <code>${wl.spiffe_id||'—'}</code> (the raw SVID rides in <code>workload.svid</code>) · <code>authorization_details</code> = what the client’s binding grants · <code>expires_in ${body.expires_in}s</code>.</p>`);
+      LAST_MINT = { attestation: att, instanceKey };
+      push(`<div class="row" style="margin-top:10px"><button id="mintUseBtn">▶ Use it at the token endpoint →</button></div><div id="mintTokenOut"></div>`);
+      const ub=$('#mintUseBtn'); if(ub) ub.onclick = mintUseAtToken;
+      setStatus('#mintStatus','attestation minted ✓','');
+    } else {
+      push(`<div style="margin:6px 0"><span class="pill ${r.status===200?'warn':'err'}">HTTP ${r.status}</span><pre>${typeof body==='string'?body:pretty(body)}</pre></div>`);
+      push(`<p class="hint">Issuance needs the <code>${clientId}</code> client provisioned with its <code>attestation_*</code> extended properties (SPIFFE bundle, instance binding, attester key)${useVault?', plus the OpenBao transit key wired to the PF runtime':''}. See <code>docs/attestation-issuance.md</code>.</p>`);
+      setStatus('#mintStatus','presented — see response','');
+    }
+  }catch(e){ push(`<div style="margin:8px 0"><span class="pill err">error</span> <span class="muted">${(e&&e.message)||e}</span></div>`); setStatus('#mintStatus','error',''); }
+}
+async function mintUseAtToken(){
+  const out = $('#mintTokenOut'); if(!out||!LAST_MINT) return; out.innerHTML='';
+  const push = h => out.insertAdjacentHTML('beforeend', h);
+  try{
+    const now = Math.floor(Date.now()/1000);
+    const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
+    const popAud = (()=>{ try{ return new URL(CFG.token_aud||CFG.token_endpoint).origin; }catch(e){ return 'https://localhost:9031'; } })();
+    const pop = await jws(LAST_MINT.instanceKey, {alg:'ES256', typ:'oauth-client-attestation-pop+jwt'},
+        {aud: popAud, jti, iat: now});
+    const r = await fetch('/api/token',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:j({form:{grant_type:'client_credentials'}, headers:{'OAuth-Client-Attestation':LAST_MINT.attestation, 'OAuth-Client-Attestation-PoP':pop}})}).then(x=>x.json());
+    let body; try{ body = JSON.parse(r.body); }catch{ body = r.body; }
+    const ok = r.status===200;
+    push(`<div style="margin:6px 0"><span class="pill ${ok?'ok':'warn'}">token endpoint HTTP ${r.status}</span><pre>${typeof body==='string'?body:pretty(body)}</pre></div>`);
+    if(!ok) push(`<p class="hint">Token issuance also requires PF’s verifier to <b>trust this client’s attester key</b> (its public JWK in the mock-attesters file, or resolved via federation). The <b>issuance</b> half is what this section demonstrates.</p>`);
+  }catch(e){ push(`<div style="margin:8px 0"><span class="pill err">error</span> <span class="muted">${(e&&e.message)||e}</span></div>`); }
+}
+{ const b = $('#mintRun'); if(b) b.onclick = mintHosted; }
 
 // ── Remote agent workload — probe + invoke a real deployed service (CORS-enabled; browser → workload) ──
 function workloadUrl(){ return (CFG.workload_url || 'https://agent-workload-production.up.railway.app').replace(/\/+$/,''); }
