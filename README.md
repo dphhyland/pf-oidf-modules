@@ -1,5 +1,8 @@
 # pf-oidf-modules
 
+> **📦 Module code has moved:** the canonical home of the modules described below (federation, client-attestation authenticator + issuer, SSF, RAR→PingAuthorize, GM API) is now the [**pf-agentic-identity** monorepo](https://github.com/dphhyland/pf-agentic-identity) — one `mvn package` builds everything. **This repo lives on as the demo + harness + ops home** (demo UI, deploy history, docs). See [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md) for the full map.
+
+
 PingFederate add-on modules implementing **OpenID Federation** (trust anchor / intermediate /
 leaf endpoints, explicit client registration, and runtime trust-chain validation) plus
 **OAuth 2.0 Attestation-Based Client Authentication** with DPoP, a **hosted attestation issuer**
@@ -317,3 +320,8 @@ replay cache, the challenge service, and JWK thumbprint binding. These tests nee
   corrected (`TrustChainValidator`, `HttpTrustControllerGateway`, `FederationService`). Prefer the
   original source if you have it.
 ```
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE). PingFederate is a Ping Identity product and is not
+included in this repository.

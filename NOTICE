@@ -1,0 +1,12 @@
+pf-oidf-modules
+Copyright 2026 ID Partners Pty Ltd
+
+Licensed under the Apache License, Version 2.0.
+
+Module source code formerly developed in this repository now has its canonical home in
+https://github.com/dphhyland/pf-agentic-identity (Apache-2.0). This repository carries the
+demo UI / harness, deploy history, and documentation.
+
+This project integrates with PingFederate, a product of Ping Identity Corporation.
+PingFederate itself (including any decompiled source used locally for reference) is NOT
+included in or distributed with this repository.
