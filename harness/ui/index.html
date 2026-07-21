@@ -107,11 +107,6 @@
     <label class="opt"><input type="radio" name="mode" value="pop" checked> PoP mode</label>
     <label class="opt"><input type="radio" name="mode" value="dpop"> DPoP combined</label>
   </span>
-  <!-- SD-JWT selective-disclosure toggle hidden for now (restore by removing style="display:none"). Plain JWT is forced. -->
-  <span class="row" data-tab="authz" style="display:none">
-    <label class="opt"><input type="radio" name="enc" value="jwt" checked> Plain JWT</label>
-    <label class="opt"><input type="radio" name="enc" value="sdjwt"> SD-JWT · selective disclosure</label>
-  </span>
 </header>
 <main>
   <nav class="tabs" role="tablist">
@@ -485,17 +480,10 @@
         <path class="flow" d="M628,132 L372,132" marker-end="url(#ah)"/>
         <text class="lbl" x="500" y="124">one-time challenge</text>
       </g>
-      <!-- stage 3: federation-gated disclosure -->
+      <!-- stage 3 -->
       <g class="edge" data-on="3">
-        <path class="flow" d="M372,188 L402,188" marker-end="url(#ah)"/>
-        <text class="lbl" x="500" y="140">holder resolves target AS standing</text>
-      </g>
-      <g class="edge" data-on="3">
-        <path class="flow" d="M410,242 L350,260" marker-end="url(#ah)"/>
-      </g>
-      <g class="edge" data-on="3">
-        <path class="flow" d="M194,290 L194,328" marker-end="url(#ah)"/>
-        <text class="lbl" x="256" y="312">standing OK</text>
+        <path class="flow" d="M194,216 L194,328" marker-end="url(#ah)"/>
+        <text class="lbl" x="256" y="286">sign attestation + proof</text>
       </g>
       <!-- stage 4 -->
       <g class="edge" data-on="4">
@@ -529,19 +517,14 @@
         <text class="t1" x="194" y="183">Client instance key</text>
         <text class="t2" x="194" y="201">EC P-256 · public JWK → cnf</text>
       </g>
-      <g class="node" data-on="3">
-        <rect x="40" y="232" width="308" height="58" rx="8"/>
-        <text class="t1" x="194" y="257">Resolve target AS standing</text>
-        <text class="t2" x="194" y="275">trust controller · is the AS trusted?</text>
-      </g>
       <g class="node" data-on="3,4">
         <rect x="40" y="328" width="308" height="58" rx="8"/>
         <text class="t1" x="194" y="353">Client Attestation  +  PoP / DPoP</text>
         <text class="t2" x="194" y="371">signed in browser · cnf binds the key</text>
       </g>
 
-      <!-- trust controller: resolved by the holder (target AS, stage 3) and the verifier (attester, stage 4) -->
-      <g class="node" data-on="3,4">
+      <!-- trust controller: resolved by the verifier (attester + client standing, stage 4) -->
+      <g class="node" data-on="4">
         <rect x="402" y="150" width="196" height="92" rx="8"/>
         <text class="t1" x="500" y="176">Trust controller</text>
         <text class="t2" x="500" y="196">OpenID Federation · authorization</text>
@@ -606,17 +589,6 @@
       The attestation also carries a <code>workload</code> claim — attester-asserted attributes about the client workload
       (<code>software_id</code>, <code>software_version</code>, <code>environment</code>, <code>instance_id</code>,
       <code>runtime</code>, <code>host</code>, <code>git_commit</code>).</p>
-      <div class="row" id="asProfileRow" style="display:none;gap:8px;align-items:center;flex-wrap:wrap">
-        <label class="opt" style="gap:8px">Target AS — federation profile:
-          <select id="asProfile" style="padding:4px 6px">
-            <option value="home-emea">Contoso EMEA AS — home federation (region:EMEA + workload-inspection)</option>
-            <option value="partner-crm">Partner CRM AS — same anchor, no workload-inspection</option>
-            <option value="external">External AS — different trust anchor</option>
-            <option value="unknown">Unknown AS — no resolvable chain</option>
-          </select>
-        </label>
-        <span class="muted" style="font-size:12px">The holder resolves the AS's trust chain and discloses only what its federation standing entitles it to.</span>
-      </div>
       <div class="row"><button id="buildBtn" disabled>Build artifacts</button></div>
       <div id="artifacts"></div>
     </div>
@@ -1097,48 +1069,11 @@ function authorizeRar(requested, entitled){
   return {ok:true};
 }
 
-// ── Federation-gated disclosure ──────────────────────────────────────────────
-// Mock AS federation profiles — stand in for resolving the target AS as a federation
-// entity (AS/.well-known/openid-federation → trust chain → anchor + trust marks).
-// LIVE: resolved via the demo server's /api/resolve proxy (trust controller /resolve + the AS's
-// entity configuration). No hard-coded table — this is a real federation resolution.
-const HOME_ANCHOR = 'https://lighthouse-staging-e017.up.railway.app';
-const AS_LABELS = {
-  'home-emea':   'Contoso EMEA AS — as-emea',
-  'partner-crm': 'Partner CRM AS — as-partner',
-  'external':    'External AS — as-external',
-  'unknown':     'Unknown AS — as-unknown'
-};
-// Resolve the selected target AS as a federation entity (live HTTP → trust controller anchor).
-async function asProfile(){
-  const key = (document.querySelector('#asProfile')||{}).value || 'home-emea';
-  let r;
-  try{ r = await fetch('/api/resolve?profile='+encodeURIComponent(key)).then(x=>x.json()); }
-  catch(e){ r = {resolvable:false, home:false, anchor:null, trust_marks:[], reason:String(e)}; }
-  return {key, label:AS_LABELS[key]||key, sub:r.sub, resolvable:!!r.resolvable, home:!!r.home,
-          anchor:r.anchor||null, trust_marks:r.trust_marks||[], org:r.org, chain_len:r.chain_len,
-          reason:r.reason, live:true};
-}
-// Holder-side disclosure policy keyed on the AS's provable federation standing.
-// Returns which workload fields + whether the entitlement are revealed, and the rationale.
-function policyReveal(p){
-  const low = new Set(['software_id','software_version','environment']);   // low-sensitivity workload
-  const hasWorkloadMark = (p.trust_marks||[]).some(m => (m||'').endsWith('/workload-inspection'));
-  if(!p.resolvable) return {entitlement:false, all:false, workload:new Set(),
-    why:"AS has no resolvable entity configuration → minimal disclosure (default deny)."};
-  if(p.home && hasWorkloadMark) return {entitlement:true, all:true, workload:new Set(),
-    why:"Resolves to the home anchor and holds trust mark <code>workload-inspection</code> → full workload + entitlement disclosed."};
-  if(p.home) return {entitlement:true, all:false, workload:low,
-    why:"Resolves to the home anchor, no <code>workload-inspection</code> mark → entitlement + low-sensitivity workload only."};
-  return {entitlement:true, all:false, workload:new Set(),
-    why:"Resolvable but under a different trust anchor → entitlement only, workload withheld (cross-domain minimization)."};
-}
-
 // ── diagram stage highlighting ──
 const CAPS = {
   1:"<b>Stage 1 — Generate keys.</b> The <b>attester</b> and <b>client-instance</b> keys are created in your browser. Nothing leaves the page yet.",
   2:"<b>Stage 2 — Fetch a challenge.</b> The browser POSTs to the <b>Challenge Servlet</b> in <code>oidf.war</code>; PingFederate returns a one-time, short-lived challenge.",
-  3:"<b>Stage 3 — Resolve standing &amp; build the attestation.</b> The holder resolves the <b>target AS live against the trust-controller anchor</b> (<code>/api/resolve</code> → trust controller <code>/resolve</code> + the AS's entity configuration → anchor + trust marks) to confirm it's a trusted federation entity, then builds the <b>Client Attestation</b> carrying the client's <code>cnf</code> key. The client key signs a <b>PoP / DPoP</b> proof that binds the request to that key.",
+  3:"<b>Stage 3 — Build the attestation &amp; proof.</b> The attester key signs the <b>Client Attestation</b> carrying the client's <code>cnf</code> key and the attested <code>workload</code> + entitlement claims. The client key signs a <b>PoP / DPoP</b> proof that binds the request to that key.",
   4:"<b>Stage 4 — Call the token endpoint.</b> Two distinct phases. <b>Authentication</b> — the attestation + PoP prove <i>who the client is</i> (verified against the pre-trusted mock attester key in this dev demo). <b>Authorization</b> — <i>based on</i> that authenticated identity, the AS resolves the client in the <b>trust controller</b> to check its federation <b>status</b> and confirm the <b>requested scopes</b> are within its entitlements, then issues or rejects."
 };
 let CUR_STAGE = 1;
@@ -1164,10 +1099,7 @@ async function importAttester(){
 }
 
 function mode(){ return document.querySelector('input[name=mode]:checked').value; }
-function encoding(){ const el=document.querySelector('input[name=enc]:checked'); return el?el.value:'jwt'; }
 async function sha256b64u(s){ return b64u(await crypto.subtle.digest('SHA-256', enc.encode(s))); }
-async function mkObjDisc(name,value){ const salt=b64u(crypto.getRandomValues(new Uint8Array(16))); const d=b64uStr(j([salt,name,value])); return {name,value,d,digest:await sha256b64u(d)}; }
-async function mkArrDisc(value){ const salt=b64u(crypto.getRandomValues(new Uint8Array(16))); const d=b64uStr(j([salt,value])); return {value,d,digest:await sha256b64u(d)}; }
 function openStep(id){ $(id).classList.add('open'); }
 function setStatus(id,txt,cls){ const e=$(id); e.textContent=txt||''; e.className='s '+(cls||''); }
 
@@ -1222,33 +1154,10 @@ async function buildArtifacts(){
   const now = Math.floor(Date.now()/1000);
   const CLIENT_ID = $('#clientId').value || 'https://rp.example.com';
   const cnfJwk = await pubJwk(client,'instance-1');
-  const isSd = encoding()==='sdjwt';
-  let attestation, attHeader, attPayload, sdjwt=null, sdHash=null;
-  if(isSd){
-    // Disclosure is chosen by the HOLDER, gated on the target AS's federation standing
-    // (resolved trust anchor + trust marks). Each workload field + the entitlement entry
-    // is a selective disclosure; the policy decides which are presented to THIS AS.
-    const prof = await asProfile();
-    const pol = policyReveal(prof);
-    const revealField = k => pol.all || pol.workload.has(k);
-    const wlDiscs = [];
-    for(const [k,v] of Object.entries(buildWorkload())){ wlDiscs.push({...(await mkObjDisc(k,v)), revealed:revealField(k)}); }
-    const entDisc = {...(await mkArrDisc(ENTITLEMENT[0])), name:'authorization_details[0]', revealed:pol.entitlement};
-    attHeader = {alg:'ES256', typ:'oauth-client-attestation+sd-jwt', kid:'mock-attester-1'};
-    attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600, cnf:{jwk:cnfJwk},
-      _sd_alg:'sha-256', authorization_details:[{'...':entDisc.digest}], workload:{_sd:wlDiscs.map(x=>x.digest)}};
-    const issuerJwt = await jws(attester, attHeader, attPayload);
-    const revealed = [...(pol.entitlement?[entDisc]:[]), ...wlDiscs.filter(x=>x.revealed)];
-    // issuer~disc1~…~discN~ (KB-JWT is the PoP). Zero disclosures → canonical "issuer~", not "issuer~~".
-    attestation = issuerJwt + '~' + revealed.map(x=>x.d).join('~') + (revealed.length?'~':'');
-    sdHash = await sha256b64u(attestation);
-    sdjwt = {disclosures:[entDisc, ...wlDiscs], asProfile:prof, policy:pol};
-  } else {
-    attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
-    attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
-      cnf:{jwk:cnfJwk}, workload:buildWorkload(), authorization_details:ENTITLEMENT};
-    attestation = await jws(attester, attHeader, attPayload);
-  }
+  const attHeader = {alg:'ES256', typ:'oauth-client-attestation+jwt', kid:'mock-attester-1'};
+  const attPayload = {iss:'https://attester.example.com', sub:CLIENT_ID, iat:now, exp:now+600,
+    cnf:{jwk:cnfJwk}, workload:buildWorkload(), authorization_details:ENTITLEMENT};
+  const attestation = await jws(attester, attHeader, attPayload);
 
   const jti = b64u(crypto.getRandomValues(new Uint8Array(16)));
   let proofHeaderName, proof, proofHeader, proofPayload;
@@ -1261,9 +1170,8 @@ async function buildArtifacts(){
     proofHeader={alg:'ES256', typ:'dpop+jwt', jwk:cnfJwk};
     proofPayload={htm:'POST', htu:CFG.token_endpoint, jti, iat:now};
   }
-  if(isSd) proofPayload.sd_hash = sdHash;   // Key-Binding: bind the exact SD-JWT + disclosures
   proof = await jws(client, proofHeader, proofPayload);
-  return {CLIENT_ID, attestation, attHeader, attPayload, proofHeaderName, proof, proofHeader, proofPayload, sdjwt};
+  return {CLIENT_ID, attestation, attHeader, attPayload, proofHeaderName, proof, proofHeader, proofPayload};
 }
 
 function artBlock(title, jwt, dec){
@@ -1462,63 +1370,12 @@ async function remoteInvoke(){
 }
 { const p=$('#remoteProbe'); if(p) p.onclick=remoteProbe; const i=$('#remoteInvoke'); if(i) i.onclick=remoteInvoke; }
 
-// Panel showing the AS resolved as a federation entity + the disclosure policy decision.
-function asEntityBlock(a){
-  const prof=a.sdjwt.asProfile, pol=a.sdjwt.policy; if(!prof) return '';
-  const shortMark = m => m.replace(/^https?:\/\/[^/]+\/trust-marks\//,'').replace(/^https?:\/\//,'');
-  const marks = prof.trust_marks.length ? prof.trust_marks.map(m=>`<code>${shortMark(m)}</code>`).join(' ') : '<span class="muted">none</span>';
-  let anchorCell;
-  if(!prof.resolvable)   anchorCell = '<span class="pill err">unresolvable — no entity configuration</span>';
-  else if(prof.home)     anchorCell = `<b>OpenID Federation Trust Controller</b> <span class="pill ok">home anchor</span>` + (prof.chain_len?` <span class="muted">· chain length ${prof.chain_len}</span>`:'');
-  else                   anchorCell = `<code>${prof.anchor||'—'}</code> <span class="pill warn">different anchor</span>`;
-  return `<div style="margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
-    <p class="lab accent">Target AS — resolved live as a federation entity <span class="pill ok" style="font-size:10px">trust controller /resolve</span></p>
-    <table style="font-size:12px;border-collapse:collapse">
-      <tr><td class="muted" style="padding:2px 10px 2px 0">profile</td><td>${prof.label}</td></tr>
-      <tr><td class="muted" style="padding:2px 10px 2px 0">entity_id</td><td><code>${prof.sub||'—'}</code></td></tr>
-      <tr><td class="muted" style="padding:2px 10px 2px 0">trust anchor</td><td>${anchorCell}</td></tr>
-      <tr><td class="muted" style="padding:2px 10px 2px 0">trust marks</td><td>${marks}</td></tr>
-    </table>
-    <p class="hint" style="margin-top:8px"><b>Disclosure policy →</b> ${pol.why}</p>
-    ${(() => {
-      // The AS side of the negotiation: an AS can declare which claims it REQUIRES disclosed
-      // (ClientAttestationConfig.requiredDisclosedClaims). The verifier rejects a presentation that
-      // withholds a required claim with `insufficient_disclosure` (unit-tested). Here: requires `workload`.
-      const workloadDisclosed = pol.all || (pol.workload && pol.workload.size > 0);
-      return `<p class="hint" style="margin-top:4px"><b>AS-side policy (verifier):</b> requires <code>workload</code> disclosed — this profile ${
-        workloadDisclosed ? '<span class="pill ok">satisfies it</span>'
-                          : '<span class="pill warn">withholds it → the verifier returns <code>insufficient_disclosure</code></span>'}</p>`;
-    })()}
-  </div>`;
-}
-
-function sdBlock(a){
-  const rows = a.sdjwt.disclosures.map(d=>`<tr>
-      <td style="padding:2px 8px">${d.revealed?'<span class="pill ok">disclosed</span>':'<span class="pill warn">withheld</span>'}</td>
-      <td class="kv" style="padding:2px 8px"><b>${d.name}</b></td>
-      <td class="muted" style="padding:2px 8px">${d.revealed?('= '+JSON.stringify(d.value)):'hash only — not sent to this AS'}</td>
-    </tr>`).join('');
-  return asEntityBlock(a) + `<div style="margin:14px 0">
-    <p class="lab accent">Client Attestation — SD-JWT (header OAuth-Client-Attestation)</p>
-    <div class="jwt">
-      <div><p class="lab h">issuer JWT header</p><pre>${pretty(a.attHeader)}</pre></div>
-      <div><p class="lab p">issuer JWT payload — only <code>_sd</code> digests, no plaintext</p><pre>${pretty(a.attPayload)}</pre></div>
-    </div>
-    <p class="lab muted">selective disclosures — only “disclosed” rows are sent to this AS</p>
-    <table style="width:100%;border-collapse:collapse;font-size:12px"><tbody>${rows}</tbody></table>
-    <p class="lab muted">compact SD-JWT presentation — <code>issuer~disclosures~</code></p><pre class="muted">${a.attestation}</pre>
-    <p class="hint">Withheld claims live only as salted <code>_sd</code> digests inside the signed payload, so this AS never sees them — yet the attester’s signature still covers them. The proof’s <code>sd_hash</code> binds these exact disclosures.</p>
-  </div>`;
-}
-
 $('#buildBtn').onclick = async () => {
   artifacts = await buildArtifacts();
   const a = artifacts;
-  const attView = a.sdjwt
-    ? sdBlock(a)
-    : artBlock('Client Attestation JWT — header OAuth-Client-Attestation', a.attestation, {header:a.attHeader,payload:a.attPayload});
-  $('#artifacts').innerHTML = attView
-    + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)${a.sdjwt?' + sd_hash':''}`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
+  $('#artifacts').innerHTML =
+    artBlock('Client Attestation JWT — header OAuth-Client-Attestation', a.attestation, {header:a.attHeader,payload:a.attPayload})
+    + artBlock(`Proof JWT — header ${a.proofHeaderName} (${mode()==='pop'?'PoP':'DPoP combined'} mode)`, a.proof, {header:a.proofHeader,payload:a.proofPayload});
   setStatus('#s3s', mode()==='pop'?'attestation + PoP built':'attestation + DPoP built');
   highlightStage(3);
   $('#tokenBtn').disabled=false; openStep('#s4'); renderCurl(); renderRar();
@@ -1594,13 +1451,8 @@ $('#tokenBtn').onclick = async () => {
   setStatus('#s4s', ok?'token issued ✓':'token endpoint responded', ok?'':'');
 };
 
-// Show the AS federation-profile selector only for SD-JWT (disclosure gating applies there).
-function syncEncUI(){ const row=$('#asProfileRow'); if(row) row.style.display = (encoding()==='sdjwt') ? 'flex' : 'none'; }
 document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{ if(artifacts) $('#buildBtn').click(); });
-document.querySelectorAll('input[name=enc]').forEach(r=>r.onchange=()=>{ syncEncUI(); if(artifacts) $('#buildBtn').click(); });
-{ const el=$('#asProfile'); if(el) el.onchange=()=>{ if(artifacts) $('#buildBtn').click(); }; }
 ['#rarRegion','#rarAction'].forEach(s=>{ const el=$(s); if(el) el.onchange=renderRar; });
-syncEncUI();
 renderRar();
 
 // ── AS-side federation client authentication panel ──
