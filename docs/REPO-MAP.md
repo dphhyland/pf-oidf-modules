@@ -21,7 +21,7 @@ The four capabilities:
 | Path | What it is |
 |---|---|
 | `com/` | The **tracked source tree** (clean-room classes only — see "Source conventions"). |
-| `src/test/java` | The tracked test tree (34 test classes). |
+| `src/test/java` | The tracked test tree (45 test classes). |
 | `src/main/java` | **Gitignored build mirror**, copied from `com/` at build time (plus the CFR-decompiled files and two authored mirror-only classes — see below). |
 | `deploy/` | Config-as-code deploy context per Railway service: `pingfederate/` (the AS + Terraform), `lighthouse/` (trust anchor), `fedhost/` (static federation entity host). |
 | `docs/` | Per-feature design docs and runbooks (index below). |
@@ -34,7 +34,7 @@ The four capabilities:
 
 - **`com/` is the tracked mirror; `src/main/java` is gitignored.** Building requires
   `cp -R com/* src/main/java/com/` (the build tree also holds what git must never publish).
-- **Clean-room vs decompiled:** all **58 tracked** classes are clean-room authored. A further **22
+- **Clean-room vs decompiled:** all **80 tracked** classes are clean-room authored. A further **22
   CFR-decompiled PingFederate classes** (headers say `Decompiled with CFR 0.152`) exist only on local
   disk, gitignored — they are Ping IP and are excluded from the public repo by design. One authored
   class (`ClientEntityAuthorizer`) is also gitignored because its canonical home moved to the private
@@ -77,7 +77,7 @@ attester signer (`JwsSigner` ← `OpenBaoTransitSigner` / `LocalJwkSigner`, sele
   also publishes the attestation context consumed by `pf-rar-paz-plugin`. `OIDFederationUtils` (CFR) —
   the `validateTrustChain(...)` OGNL hook.
 
-### `ssf` + `servlet/ssf` — the SSF 1.0 transmitter (34 tracked)
+### `ssf` + `servlet/ssf` — the SSF 1.0 transmitter (42 tracked)
 See [ssf-transmitter.md](ssf-transmitter.md) for the full design. In brief: RFC 8417 SET minting with
 PF's JWKS key (`SetMinter`), stream management + RFC 8936 poll + RFC 8935 push with retry/dead-letter
 (`StreamManagementService`, `PushDeliveryService`), event fan-out (`SsfEventEmitter`, `SsfEventBridge`,

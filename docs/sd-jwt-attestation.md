@@ -54,7 +54,7 @@ and the PingAuthorize plugin forward *those* (PDP checks `requested ⊆ disclose
   (verify issuer signature → reconstruct → build attestation) + KB-JWT `sd_hash` binding; and the
   `ClientAttestationConfig.acceptSdJwt` / `requireSdJwt` knobs. Tests: `SdJwtTest`, `ClientAttestationSdJwtTest`,
   `ClientAttestationVerifierSdJwtTest` (5 e2e cases — only the disclosed entitlement surfaces; wrong/missing
-  `sd_hash` rejected; format policy enforced). Additive — plain path + its tests untouched (pf-oidf-modules 59 green).
+  `sd_hash` rejected; format policy enforced). Additive — plain path + its tests untouched (pf-oidf-modules 221 tests, green in CI).
 - **Surfaced as an option:** advertised via `client_attestation_formats_supported` in the OP metadata
   (`AttestationMetadataConfig` + `FederationService`); selectable per client via the `attestation_format`
   extended property (`ClientAttestationUtils.buildConfig`: `jwt` | `sd-jwt` | `either`); and shown in the demo UI
