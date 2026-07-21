@@ -34,7 +34,7 @@ class names**, so any class in both places is a potential drift hazard.
 | Repo | Role | Overlapping classes (same package+name) | Freshness signal |
 |---|---|---|---|
 | `pf-oidf` (local only) | Intermediate multi-module rebuild; its `MIGRATION.md` documents the extraction | whole servlet/attestation seam | last commit 2026-07-05 |
-| `oidf-jose` | Foundation JOSE module | `common.{JwtCodec, Jwks, Claims, SdJwt, SdJwtException, HttpGetClient, JdkHttpGetClient, SigningKeyProvider}` | 2026-07-07 |
+| `oidf-jose` | Foundation JOSE module | `common.{JwtCodec, Jwks, Claims, HttpGetClient, JdkHttpGetClient, SigningKeyProvider}` — `SdJwt`/`SdJwtException` now live ONLY there (the SD-JWT attestation encoding was dropped from this repo) | 2026-07-07 |
 | `client-attestation` | AS-side attestation verifier | `common.{ClientAttestationVerifier, ClientAttestationConfig, DpopProof, DpopProofValidator, AttesterKeyResolver, MiniRedisClient, RarEntitlement}` + challenge/replay machinery | 2026-07-07 |
 | `openid-federation` | Federation module | `common.{TrustChainValidator, TrustChainValidationResult, ClientEntityAuthorizer, HttpTrustControllerGateway, TrustControllerGateway, SubordinateStatementCache}`, `servlet.trustanchor.{FederationService, FederationConfiguration}` | 2026-07-10 — **ahead of this repo** (advertises draft-10 `client_attestation_pop_methods_supported`) |
 | `pf-integration` | The PF-glue module (only one with the PF SDK dep); assembles `oidf.war` | `servlet.clientregistration.*` (registration servlet + service + config), `utils.OIDFederationUtils`, `servlet.trustanchor.OpenIdFederationServlet`, `common.{PfMgmtClientStore, PfJwksSigningKeyProvider, ClientStore}` | 2026-07-07 |
