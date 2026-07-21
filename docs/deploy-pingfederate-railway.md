@@ -12,7 +12,10 @@ Companion memory: `railway-deploy-and-build.md`, `staging-mirror-and-sdjwt-live.
 
 - **Railway CLI**, authenticated (`railway whoami`). PF needs ~2 GB RAM → a **Hobby-plan** workspace.
   Prefix Railway CLI calls with `RAILWAY_CALLER=skill:use-railway@1.3.3 RAILWAY_AGENT_SESSION=<stable-id>`.
-- A **PingFederate license** (`pingfederate.lic`). The one in the reusable context (ID Partners) **expires 2026-07-13** — check validity; get a fresh one if expired.
+- **Licensing** — preferred: **DevOps-fetched at boot** (set `PING_IDENTITY_DEVOPS_USER`,
+  `PING_IDENTITY_DEVOPS_KEY`, `PING_IDENTITY_ACCEPT_EULA=YES` as service vars; ~7-day eval, renews on
+  restart — this is what both live envs now use, no baked `.lic`). Alternative: a `pingfederate.lic`
+  baked into the image (the one in the reusable context expired 2026-07-13).
 - The base image `pingidentity/pingfederate:13.0.3-alpine_3.23.4-al21-latest` (pulled automatically by the build).
 
 ---
@@ -86,7 +89,7 @@ COPY --chown=9031:0 overlay/pf.jwk /opt/in/instance/server/default/data/pf.jwk
 COPY --chown=9031:0 overlay/pingfederate-system-keys.xml /opt/in/instance/server/default/data/pingfederate-system-keys.xml
 # force import: a raw-zipped archive has no version stamp (safe: same 13.0.3 image)
 COPY --chown=9031:0 overlay/config-store/org.sourceid.saml20.domain.mgmt.impl.DataDeployer.xml /opt/in/instance/server/default/data/config-store/org.sourceid.saml20.domain.mgmt.impl.DataDeployer.xml
-COPY --chown=9031:0 pingfederate.lic /opt/in/instance/server/default/conf/pingfederate.lic
+COPY --chown=9031:0 pingfederate.lic /opt/in/instance/server/default/conf/pingfederate.lic   # omit when using DevOps-fetched licensing (env vars instead)
 COPY --chown=9031:0 oidf.war            /opt/in/instance/server/default/deploy/oidf.war
 COPY --chown=9031:0 pf-oidf-modules.jar /opt/in/instance/server/default/deploy/pf-oidf-modules.jar   # loose jar = the OGNL hook
 COPY --chown=9031:0 jose4j-0.9.6.jar    /opt/in/instance/server/default/deploy/jose4j-0.9.6.jar
@@ -187,7 +190,8 @@ PF log confirms success:
 - **Master key** — if the archive's secrets were encrypted under a different `pf.jwk`, overlay that `pf.jwk`
   (Dockerfile does) so they decrypt; otherwise client-auth fails `invalid_client`.
 - **Ephemeral `/opt/out`** — no persistent volume; console-made changes are lost on redeploy. Config is code (the archive).
-- **License expiry** — the ID Partners license expires **2026-07-13**.
+- **License expiry** — with DevOps-fetched licensing (now standard) the ~7-day eval renews on every
+  restart; a weekly restart keeps it green. The old baked ID Partners `.lic` expired 2026-07-13.
 
 ---
 

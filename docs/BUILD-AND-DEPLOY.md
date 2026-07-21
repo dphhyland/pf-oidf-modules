@@ -4,6 +4,11 @@ How `pf-oidf-modules` (the OAuth 2.0 Attestation-Based Client Authentication
 extension) is built, packaged, configured into a live PingFederate, and deployed
 to Railway. This is the end-to-end record of what was done and why.
 
+> **Historical record.** This documents the original bring-up; several
+> limitations below have since been resolved (noted inline). For the current
+> inventory see [REPO-MAP.md](REPO-MAP.md); for the current deploy recipe see
+> [deploy-pingfederate-railway.md](deploy-pingfederate-railway.md).
+
 ---
 
 ## 0. Starting point
@@ -24,11 +29,10 @@ a live PF instance, (5) deploying to Railway.
 ## 1. The extension code
 
 Implements **OAuth 2.0 Attestation-Based Client Authentication**
-(`draft-ietf-oauth-attestation-based-client-auth-10`), auth method
-`attest_jwt_client_auth` with both PoP methods:
+(`draft-ietf-oauth-attestation-based-client-auth-09`), both PoP variants:
 
-- `attestation_pop_jwt` — dedicated PoP JWT
-- `dpop_combined` — DPoP combined mode (DPoP `jwk` must equal the
+- `attest_jwt_client_auth` — dedicated PoP JWT
+- `attest_jwt_client_auth_dpop` — DPoP combined mode (DPoP `jwk` must equal the
   attestation `cnf`)
 
 **Framework-agnostic core** (`common/`):
@@ -87,7 +91,7 @@ from `art01.corp.pingidentity.com`, which is unreachable. Build instead against 
        -Dcheckstyle.skip=true -Dmaven.compiler.proc=none
    ```
 
-Result: **the full unit-test suite passes**, thin **~109K** jar
+Result: **39 unit tests pass**, thin **~109K** jar
 (`target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`); jose4j/jackson not shaded.
 
 ### 2.1 Decompilation artifacts fixed to make it compile
@@ -122,6 +126,12 @@ not auto-deployed.**
 > jars and the servlet from the WAR, they hold **separate `AttestationSupport`
 > singletons**. So a challenge issued by the servlet isn't visible to the hook.
 > The full challenge flow needs the module merged into `pf-runtime.war`.
+>
+> **Since resolved, two ways:** the merged-war deploy
+> (`deploy/pingfederate/build/assemble-pf-runtime-war.sh` injects the module into
+> `pf-runtime.war` — single classloader), and the **Redis-backed** challenge +
+> `jti` replay stores (`RedisAttestationStore`, `REDIS_URL`), which share state
+> across classloaders *and* cluster nodes.
 
 ---
 
@@ -186,7 +196,10 @@ Topology notes:
 - Needs the **Hobby plan** (free plan can't provision ~2 GB).
 - **No persistent volume** → console edits are ephemeral; the baked data dir is the
   source of truth.
-- License (ID 01049798, ID Partners) **expires 2026-07-13**.
+- ~~License (ID 01049798, ID Partners) expires 2026-07-13~~ — licensing is now
+  **DevOps-fetched at boot** (`PING_IDENTITY_DEVOPS_USER`/`_KEY` +
+  `PING_IDENTITY_ACCEPT_EULA`), no baked `.lic`; the ~7-day eval renews on
+  restart.
 
 ### Live endpoints (Railway project `pingfederate`)
 
@@ -204,8 +217,9 @@ A real `access_token` issues when **all** of these hold:
 
 1. PoP `aud` / DPoP `htu` equals the **actual** token URL —
    `/as/token.oauth2` at ROOT, **not** under `/oidf`.
-2. The challenge is **omitted** (`OIDF_NO_CHALLENGE=1`) — see the classloader-split
-   limitation in §3.
+2. ~~The challenge is omitted (`OIDF_NO_CHALLENGE=1`)~~ — no longer needed: with
+   the merged-war deploy / Redis-backed stores (§3 note) the full challenge flow
+   works.
 3. The client has a secret — PF forbids public clients with `client_credentials`,
    so the demo UI proxy injects it.
 
@@ -224,14 +238,17 @@ Verified working **locally and on Railway**.
 
 ---
 
-## 8. Open items
+## 8. Open items (updated)
 
-1. **Classloader split** — merge the module into `pf-runtime.war` so the challenge
-   servlet and the issuance hook share one `AttestationSupport`, enabling the full
-   challenge flow (drop the `OIDF_NO_CHALLENGE` bypass).
-2. **Real federation trust** — exercise the
-   `FederationAttesterKeyResolver` / `TrustChainValidator` path instead of the
-   static mock attester, for a non-dev green token.
-3. **Clustering** — challenge/replay state is per-node; a clustered PF needs a
-   shared store. Response-header challenge delivery (draft §6.2) is not wired (the
-   hook has no response); clients use the challenge endpoint (§6.1).
+1. ~~**Classloader split**~~ — **done**: the module is merged into
+   `pf-runtime.war` by `assemble-pf-runtime-war.sh` (single classloader), and the
+   challenge/replay stores are Redis-backed; the `OIDF_NO_CHALLENGE` bypass is
+   gone.
+2. **Real federation trust** — **done**: the live demo federation under the
+   Lighthouse trust anchor exercises the
+   `FederationAttesterKeyResolver` / `TrustChainValidator` path with distributed
+   `/resolve` (the static mock attester remains a DEV convenience).
+3. **Clustering** — challenge/replay state is now shared via Redis
+   (`RedisAttestationStore`, fail-closed). Still open: response-header challenge
+   delivery (draft §6.2) is not wired (the hook has no response); clients use the
+   challenge endpoint (§6.1).

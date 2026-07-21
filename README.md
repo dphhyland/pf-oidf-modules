@@ -2,19 +2,29 @@
 
 PingFederate add-on modules implementing **OpenID Federation** (trust anchor / intermediate /
 leaf endpoints, explicit client registration, and runtime trust-chain validation) plus
-**OAuth 2.0 Attestation-Based Client Authentication** with DPoP.
+**OAuth 2.0 Attestation-Based Client Authentication** with DPoP, a **hosted attestation issuer**
+(SPIFFE JWT-SVID → minted client attestation), an **SSF 1.0 (CAEP/RISC) transmitter and receiver**
+([docs/ssf-transmitter.md](docs/ssf-transmitter.md)), and a **RAR → PingAuthorize** plugin.
+
+> **Orientation:** [docs/REPO-MAP.md](docs/REPO-MAP.md) is the full inventory of what's in this repo
+> (packages, endpoints, deploy contexts, harness, build). [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md)
+> maps the surrounding ecosystem — the clean-room carve-out repos, the agentic deploy context, the
+> Identity Object Model store, the demos — and which repo is the source of truth for each overlap.
 
 - OpenID Federation 1.0 (entity statements, subordinate fetch, list, resolve, explicit registration)
 - Runtime trust-chain validation of `private_key_jwt` client assertions
-- **Attestation-based client authentication** — `attest_jwt_client_auth` with the
-  `attestation_pop_jwt` and `dpop_combined` proof-of-possession methods
-  ([draft-ietf-oauth-attestation-based-client-auth-10](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-10.html)),
+- **Attestation-based client authentication** — `attest_jwt_client_auth` and
+  `attest_jwt_client_auth_dpop` ([draft-ietf-oauth-attestation-based-client-auth-09](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-09.html)),
   with the Client Attester trusted via the federation trust chain, a challenge endpoint for
   replay/freshness, and DPoP "combined mode" ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449))
 - **Optional SD-JWT attestation encoding** — the Client Attestation may be presented as an SD-JWT so the
   client selectively discloses only the claims a given AS needs (e.g. one entitlement entry, minimal
   `workload`). Advertised via `client_attestation_formats_supported` and gated per client by the
   `attestation_format` extended property. See [docs/sd-jwt-attestation.md](docs/sd-jwt-attestation.md).
+- **Attestation issuance endpoint** — a SPIFFE workload exchanges its JWT-SVID for a freshly-minted Client
+  Attestation bound to its instance key, signed by the client's own attester key (OpenBao transit or an
+  inline JWK), with one-to-many SPIFFE-ID bindings. Issuance only; the AS-side verification path is
+  unchanged. See [docs/attestation-issuance.md](docs/attestation-issuance.md).
 
 > The modules **augment** PingFederate's native client authentication: PingFederate identifies the
 > client, and a static utility invoked from **OAuth token-endpoint issuance criteria** performs the
@@ -122,9 +132,9 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
    ```bash
    curl -s https://<pf-host>:9031/.well-known/openid-federation | cut -d. -f2 | base64 -d | jq .metadata.openid_provider
    ```
-   You should see `attest_jwt_client_auth` in `token_endpoint_auth_methods_supported`,
-   `attestation_pop_jwt` and `dpop_combined` in `client_attestation_pop_methods_supported`,
-   the `*_signing_alg_values_supported` lists, and `challenge_endpoint`.
+   You should see `attest_jwt_client_auth` and `attest_jwt_client_auth_dpop` in
+   `token_endpoint_auth_methods_supported`, the `*_signing_alg_values_supported` lists, and
+   `challenge_endpoint`.
 
 ---
 
@@ -136,6 +146,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | GET | `/federation/entity`, `/federation/fetch`, `/federation/list`, `/federation/resolve` | Federation operations |
 | POST | `/federation/register` | Explicit client registration (`entity-statement+jwt` or `trust-chain+json`) |
 | POST | `/federation/attestation-challenge` | **New** — issues a one-time challenge; returns `{"attestation_challenge","expires_in"}` with `Cache-Control: no-store` |
+| POST | `/federation/attestation` | **New** — issues a Client Attestation to a workload that authenticates with a SPIFFE JWT-SVID; returns `{"attestation","expires_in"}` with `Cache-Control: no-store`. See [docs/attestation-issuance.md](docs/attestation-issuance.md) |
 
 ---
 
@@ -151,8 +162,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `ignoreSslErrors` | `false` | Disable TLS verification for federation fetches (**dev only**) |
 | `signingAlgorithm` | `RS256` | `RS256` or `PS256` |
 | `corsEnabled` / `corsAllowOrigin` / `corsAllowMethods` / `corsAllowHeaders` / `corsMaxAge` | see code | CORS for federation GETs |
-| `tokenEndpointAuthMethodsSupported` | `private_key_jwt,attest_jwt_client_auth` | Advertised auth methods |
-| `clientAttestationPopMethodsSupported` | `attestation_pop_jwt,dpop_combined` | Advertised PoP methods (`client_attestation_pop_methods_supported`) |
+| `tokenEndpointAuthMethodsSupported` | `private_key_jwt,attest_jwt_client_auth,attest_jwt_client_auth_dpop` | Advertised auth methods |
 | `clientAttestationSigningAlgValuesSupported` | `RS256,PS256,ES256` | Advertised attestation algs |
 | `clientAttestationPopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised PoP algs |
 | `dpopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised DPoP algs |
@@ -178,6 +188,29 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `challengeCacheMaxEntries` | `8192` | Bound on outstanding challenges |
 | `replayCacheMaxEntries` | `8192` | Bound on the shared `jti` replay cache |
 
+### Attestation issuance servlet (`AttestationIssuanceServlet`)
+
+Issues a Client Attestation to a SPIFFE workload (`POST /federation/attestation`). See
+[docs/attestation-issuance.md](docs/attestation-issuance.md) for the full flow.
+
+| init-param | Default | Notes |
+|------------|---------|-------|
+| `challengeRequired` | `false` | Require the instance-key proof to carry a valid server challenge |
+| `openBaoUrl` | env `OIDF_OPENBAO_URL` / `OPENBAO_ADDR` / … | OpenBao/Vault address for transit signing |
+| `openBaoToken` | env `OIDF_OPENBAO_TOKEN` / `OPENBAO_TOKEN` / … | Token permitted to read/sign the transit key |
+
+Per-client issuance config is read from **extended properties** (provisioned at registration / admin / Terraform):
+
+| Extended property | Effect |
+|-------------------|--------|
+| `attestation_issuer` | Attester identity: `iss` of minted attestations **and** the required SVID `aud` |
+| `attestation_spiffe_bundle` | SPIFFE trust-bundle JWKS used to verify presented SVIDs |
+| `attestation_signing_key_ref` *or* `attestation_signing_jwk` | Attester key — an OpenBao transit key name **or** an inline private JWK (set exactly one) |
+| `attestation_instances` | JSON array binding one-or-more SPIFFE IDs to the client, each with optional `entitlement` and `metadata` |
+| `attestation_entitlement` | Optional client-level RFC 9396 ceiling; per-instance entitlements must be ⊆ this |
+| `attestation_issued_ttl` | Lifetime (s) of the minted attestation (default `300`) |
+| `attestation_trust_domain` | Optional: pin the accepted SVID trust domain |
+
 ### Per-client tuning (client **extended properties**, read by the runtime hook)
 
 | Extended property | Default | Effect |
@@ -198,8 +231,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 ## Enabling attestation-based client authentication
 
 1. **Register the client** at `/federation/register` with RP metadata
-   `token_endpoint_auth_method` = `attest_jwt_client_auth` (either PoP method — the mode is chosen
-   per request by which proof header the client presents). The
+   `token_endpoint_auth_method` = `attest_jwt_client_auth` or `attest_jwt_client_auth_dpop`. The
    module registers it as a **public client** (`ClientAuthenticationType.NONE`) and sets the
    `attestation_required=true` extended property. (Other clients keep `private_key_jwt`.)
 
@@ -227,7 +259,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 
 ## Client request format
 
-**PoP-JWT mode** (PoP method `attestation_pop_jwt`) — token request carries two headers:
+**PoP-JWT mode** (`attest_jwt_client_auth`) — token request carries two headers:
 
 ```
 POST /as/token.oauth2 HTTP/1.1
@@ -238,7 +270,7 @@ OAuth-Client-Attestation-PoP: <PoP JWT>                 typ=oauth-client-attesta
 - **Attestation JWT**: `iss`=Attester, `sub`=`client_id`, `exp`, `cnf.jwk`=instance public key.
 - **PoP JWT** (signed by the instance key): `aud`=AS issuer/token endpoint, `jti`, `iat`, optional `challenge`.
 
-**DPoP combined mode** (PoP method `dpop_combined`) — the DPoP proof *is* the PoP (no PoP header):
+**DPoP combined mode** (`attest_jwt_client_auth_dpop`) — the DPoP proof *is* the PoP (no PoP header):
 
 ```
 POST /as/token.oauth2 HTTP/1.1
