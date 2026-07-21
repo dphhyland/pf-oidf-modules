@@ -7,17 +7,21 @@ import com.pingidentity.ps.oidf.common.AttestationIssuanceConfig;
 import com.pingidentity.ps.oidf.common.AttestationMinter;
 import com.pingidentity.ps.oidf.common.AttestationSupport;
 import com.pingidentity.ps.oidf.common.AttesterSigningKey;
+import com.pingidentity.ps.oidf.common.CimdIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationConfig;
+import com.pingidentity.ps.oidf.common.CompositeIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationException;
 import com.pingidentity.ps.oidf.common.IssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.IssuanceException;
 import com.pingidentity.ps.oidf.common.InstanceKeyProofValidator;
+import com.pingidentity.ps.oidf.common.JdkHttpGetClient;
 import com.pingidentity.ps.oidf.common.JwsSigner;
 import com.pingidentity.ps.oidf.common.PfMgmtClientStore;
 import com.pingidentity.ps.oidf.common.RarEntitlement;
 import com.pingidentity.ps.oidf.common.SpiffeBinding;
 import com.pingidentity.ps.oidf.common.SpiffeSvid;
 import com.pingidentity.ps.oidf.common.SpiffeSvidValidator;
+import com.pingidentity.ps.oidf.common.TrustDomainBundles;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -71,7 +75,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
         String baoUrl = config.getInitParameter("openBaoUrl");
         String baoToken = config.getInitParameter("openBaoToken");
         if (baoUrl != null && baoToken != null) {
-            this.attesterSigningKey = new AttesterSigningKey(baoUrl, baoToken);
+            this.attesterSigningKey = configureIssuerKeys(new AttesterSigningKey(baoUrl, baoToken));
         }
     }
 
@@ -149,8 +153,11 @@ public class AttestationIssuanceServlet extends HttpServlet {
             granted = ceiling;
         }
 
-        // 6. Mint + sign with the per-client attester key.
-        JwsSigner signer = attesterSigningKey().signerFor(config.signingKeyRef(), config.signingJwk());
+        // 6. Mint + sign with the attester key. A PF-extended-property config names the key inline; a
+        // metadata-sourced config (federation / CIMD) publishes only the attester issuer, so resolve by it.
+        JwsSigner signer = (config.signingKeyRef() != null || config.signingJwk() != null)
+                ? attesterSigningKey().signerFor(config.signingKeyRef(), config.signingJwk())
+                : attesterSigningKey().signerForIssuer(config.issuer());
         String attestation = AttestationMinter.mint(config.issuer(), request.clientId, request.instanceKey,
                 svid, binding.metadata(), granted, config.ttlSeconds(), signer);
 
@@ -190,11 +197,35 @@ public class AttestationIssuanceServlet extends HttpServlet {
     }
 
     /**
-     * The runtime default resolver — reads clients from PingFederate's management store. Extracted as an
-     * overridable seam so the lazy-initialization path can be exercised without a live PF runtime.
+     * The runtime default resolver, composed in assurance order. CIMD is opt-in — enabled only when the
+     * attester's trust-domain bundles are configured ({@code OIDF_CIMD_TRUST_BUNDLES}) — and always falls
+     * back to the PingFederate client store. (The federation resolver slots in first once its trust-chain
+     * wiring — op issuer + trust controller — is supplied; inject it via {@link #setClientResolver} until
+     * then.) Overridable so the lazy-init path is testable without a live PF runtime.
      */
     protected IssuanceClientResolver defaultClientResolver() {
-        return new PfIssuanceClientResolver(new PfMgmtClientStore());
+        List<IssuanceClientResolver> chain = new ArrayList<>();
+        IssuanceClientResolver cimd = cimdResolverFromEnv();
+        if (cimd != null) {
+            chain.add(cimd);
+        }
+        chain.add(new PfIssuanceClientResolver(new PfMgmtClientStore()));
+        return chain.size() == 1 ? chain.get(0) : new CompositeIssuanceClientResolver(chain);
+    }
+
+    private static IssuanceClientResolver cimdResolverFromEnv() {
+        String bundles = env("oidf.cimd.trust.bundles", "OIDF_CIMD_TRUST_BUNDLES");
+        if (bundles == null) {
+            return null;
+        }
+        return new CimdIssuanceClientResolver(new JdkHttpGetClient(false), TrustDomainBundles.fromJson(bundles));
+    }
+
+    /** The attester issuer → signing-key maps for metadata-sourced configs, from the environment. */
+    private static AttesterSigningKey configureIssuerKeys(AttesterSigningKey key) {
+        Map<String, String> keyRefs = parseStringMap(env("oidf.attester.issuer.keys", "OIDF_ATTESTER_ISSUER_KEYS"));
+        Map<String, Map<String, Object>> jwks = parseObjectMap(env("oidf.attester.issuer.jwks", "OIDF_ATTESTER_ISSUER_JWKS"));
+        return key.withIssuerKeys(keyRefs, jwks);
     }
 
     private AttesterSigningKey attesterSigningKey() {
@@ -202,7 +233,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
         if (local == null) {
             synchronized (this) {
                 if (this.attesterSigningKey == null) {
-                    this.attesterSigningKey = AttesterSigningKey.fromEnvironment();
+                    this.attesterSigningKey = configureIssuerKeys(AttesterSigningKey.fromEnvironment());
                 }
                 local = this.attesterSigningKey;
             }
@@ -281,6 +312,51 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    private static String env(String sysProp, String envVar) {
+        String v = System.getProperty(sysProp);
+        if (v == null || v.isBlank()) {
+            v = System.getenv(envVar);
+        }
+        return v == null || v.isBlank() ? null : v.trim();
+    }
+
+    /** Parses a JSON object of {@code issuer → key-name} strings; returns empty on absent/malformed. */
+    private static Map<String, String> parseStringMap(String json) {
+        if (json == null) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        try {
+            JsonUtil.parseJson(json).forEach((k, v) -> {
+                if (v != null) {
+                    out.put(k, String.valueOf(v));
+                }
+            });
+        } catch (Exception e) {
+            return Map.of();
+        }
+        return out;
+    }
+
+    /** Parses a JSON object of {@code issuer → JWK-object} maps; returns empty on absent/malformed. */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Map<String, Object>> parseObjectMap(String json) {
+        if (json == null) {
+            return Map.of();
+        }
+        Map<String, Map<String, Object>> out = new LinkedHashMap<>();
+        try {
+            JsonUtil.parseJson(json).forEach((k, v) -> {
+                if (v instanceof Map) {
+                    out.put(k, (Map<String, Object>) v);
+                }
+            });
+        } catch (Exception e) {
+            return Map.of();
+        }
+        return out;
     }
 
     /** Parsed issuance request. */

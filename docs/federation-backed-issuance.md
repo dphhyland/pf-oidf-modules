@@ -207,6 +207,27 @@ The **federation** resolver belongs in the **`openid-federation` carve-out** (ca
 `AttestationIssuanceConfig`. `AttestationIssuanceConfig` stays here; only the shared `fromEntityMetadata`
 factory is added.
 
+## Status (built)
+
+Built and offline-unit-tested in this module (21 new tests):
+- `AttestationIssuanceConfig.fromEntityMetadata(...)` — the shared native-metadata factory.
+- `CimdIssuanceClientResolver` + `TrustDomainBundles` (attester-configured bundle) with the
+  SSRF / 5 KB / `client_id`-match guards.
+- `AttesterSigningKey.signerForIssuer(...)` — signer resolved by attester issuer for metadata-sourced
+  configs (they publish who the attester is, not its key).
+- `CompositeIssuanceClientResolver` — assurance-ordered chain.
+- Servlet wiring: signer resolution (inline vs by-issuer) + a composite default (CIMD opt-in via
+  `OIDF_CIMD_TRUST_BUNDLES` → PF); attester issuer→key maps from `OIDF_ATTESTER_ISSUER_KEYS` /
+  `OIDF_ATTESTER_ISSUER_JWKS`.
+
+Decisions taken by the build: metadata type = `oauth_client_attestation` (dedicated); coexistence =
+composite; CIMD bundle = attester allowlist (`trustBundleFromMetadata=false`), federation = from metadata.
+
+`FederationIssuanceClientResolver` is authored and **compiles** against the trust-chain classes (mirrors
+`FederationAttesterKeyResolver`), but is **not** yet in the runtime default and is **not** offline-unit-
+testable — it needs the op-issuer + trust-controller wiring the AS-side federation path uses, and a live
+federation to exercise. Inject it via `setClientResolver` until that wiring lands.
+
 ## Open decisions
 
 1. **Metadata type name** — `oauth_client_attestation` (proposed) vs folding the fields into the standard

@@ -21,10 +21,30 @@ public final class AttesterSigningKey {
     private final String baoUrl;
     private final String baoToken;
     private final ConcurrentHashMap<String, JwsSigner> transitCache = new ConcurrentHashMap<>();
+    // Environment-level map of attester issuer → signing key, for metadata-sourced configs (federation /
+    // CIMD) that publish WHO the attester is but not its private key.
+    private volatile Map<String, String> issuerKeyRefs = Map.of();
+    private volatile Map<String, Map<String, Object>> issuerInlineJwks = Map.of();
 
     public AttesterSigningKey(String baoUrl, String baoToken) {
         this.baoUrl = blankToNull(baoUrl);
         this.baoToken = blankToNull(baoToken);
+    }
+
+    /**
+     * Registers the attester issuer → signing key map used by {@link #signerForIssuer}. Federation/CIMD
+     * configs publish the attester identity ({@code issuer}) but never its private key; this maps that
+     * issuer to a transit key name and/or an inline JWK held by the attester.
+     */
+    public AttesterSigningKey withIssuerKeys(Map<String, String> issuerKeyRefs,
+                                             Map<String, Map<String, Object>> issuerInlineJwks) {
+        if (issuerKeyRefs != null) {
+            this.issuerKeyRefs = Map.copyOf(issuerKeyRefs);
+        }
+        if (issuerInlineJwks != null) {
+            this.issuerInlineJwks = Map.copyOf(issuerInlineJwks);
+        }
+        return this;
     }
 
     /**
@@ -71,6 +91,23 @@ public final class AttesterSigningKey {
         } catch (RuntimeException e) {
             throw IssuanceException.invalidClient("attestation_signing_jwk is invalid: " + e.getMessage());
         }
+    }
+
+    /**
+     * Resolves the signer for a metadata-sourced config by its attester {@code issuer} (federation / CIMD),
+     * using the {@link #withIssuerKeys} map.
+     *
+     * @throws IssuanceException {@code server_error} if no key is configured for the issuer
+     */
+    public JwsSigner signerForIssuer(String issuer) throws IssuanceException {
+        String keyRef = this.issuerKeyRefs.get(issuer);
+        Map<String, Object> jwk = this.issuerInlineJwks.get(issuer);
+        boolean hasRef = keyRef != null && !keyRef.isBlank();
+        boolean hasJwk = jwk != null && !jwk.isEmpty();
+        if (!hasRef && !hasJwk) {
+            throw IssuanceException.serverError("no attester signing key configured for issuer: " + issuer);
+        }
+        return signerFor(hasRef ? keyRef : null, hasRef ? null : jwk);
     }
 
     private static String resolve(String sysProp, String... envVars) {

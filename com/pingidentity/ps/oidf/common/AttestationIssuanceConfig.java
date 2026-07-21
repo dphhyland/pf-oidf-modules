@@ -107,6 +107,67 @@ public final class AttestationIssuanceConfig {
                 trustDomain, bindings);
     }
 
+    /**
+     * Builds a config from an {@code oauth_client_attestation} metadata block (native maps/lists, as a
+     * federation entity statement or a CIMD document carries it). The trust bundle is supplied by the
+     * caller — it is the <em>resolver's</em> trust decision (chain-vouched for federation, the attester's
+     * configured bundle for CIMD), never read from a self-asserted document here. Metadata-sourced configs
+     * carry no private signing key; the signer is resolved by {@code issuer}
+     * ({@link AttesterSigningKey#signerForIssuer}).
+     *
+     * @param att        the {@code oauth_client_attestation} metadata (attester / issued_ttl / entitlement / instances)
+     * @param bundleKeys the SPIFFE trust bundle to validate SVIDs against (resolver-supplied, non-empty)
+     */
+    public static AttestationIssuanceConfig fromEntityMetadata(Map<String, Object> att, List<JsonWebKey> bundleKeys)
+            throws IssuanceException {
+        if (att == null || att.isEmpty()) {
+            throw IssuanceException.invalidClient("oauth_client_attestation metadata is missing");
+        }
+        String issuer = str(att.get("attester"));
+        if (issuer == null) {
+            throw IssuanceException.invalidClient("oauth_client_attestation: missing 'attester'");
+        }
+        long ttl = DEFAULT_TTL_SECONDS;
+        Object ttlValue = att.get("issued_ttl");
+        if (ttlValue instanceof Number) {
+            ttl = ((Number) ttlValue).longValue();
+        } else if (ttlValue != null) {
+            try {
+                ttl = Long.parseLong(String.valueOf(ttlValue).trim());
+            } catch (NumberFormatException e) {
+                throw IssuanceException.invalidClient("oauth_client_attestation 'issued_ttl' is not a number");
+            }
+        }
+        if (ttl <= 0) {
+            throw IssuanceException.invalidClient("oauth_client_attestation 'issued_ttl' must be positive");
+        }
+        if (bundleKeys == null || bundleKeys.isEmpty()) {
+            throw IssuanceException.invalidClient("no SPIFFE trust bundle available for this client");
+        }
+        List<Map<String, Object>> ceiling = asObjectList(att.get("entitlement"), "entitlement");
+        List<SpiffeBinding> bindings = parseInstancesList(asList(att.get("instances"), "instances"), ceiling);
+        String trustDomain = str(att.get("trust_domain"));
+        return new AttestationIssuanceConfig(issuer, ttl, bundleKeys, ceiling, null, null, trustDomain, bindings);
+    }
+
+    private static List<?> asList(Object value, String field) throws IssuanceException {
+        if (value == null) {
+            return List.of();
+        }
+        if (!(value instanceof List)) {
+            throw IssuanceException.invalidClient("oauth_client_attestation '" + field + "' must be a JSON array");
+        }
+        return (List<?>) value;
+    }
+
+    private static String str(Object o) {
+        if (o == null) {
+            return null;
+        }
+        String s = String.valueOf(o).trim();
+        return s.isEmpty() ? null : s;
+    }
+
     public String issuer() {
         return this.issuer;
     }
@@ -170,8 +231,14 @@ public final class AttestationIssuanceConfig {
         if (!(parsed instanceof List)) {
             throw IssuanceException.invalidClient(P_INSTANCES + " must be a JSON array");
         }
+        return parseInstancesList((List<?>) parsed, clientCeiling);
+    }
+
+    /** Builds the {@link SpiffeBinding} list from an already-parsed native array (the shared core). */
+    private static List<SpiffeBinding> parseInstancesList(List<?> parsed, List<Map<String, Object>> clientCeiling)
+            throws IssuanceException {
         List<SpiffeBinding> out = new ArrayList<>();
-        for (Object item : (List<?>) parsed) {
+        for (Object item : parsed) {
             if (!(item instanceof Map)) {
                 throw IssuanceException.invalidClient(P_INSTANCES + " entries must be JSON objects");
             }
@@ -215,12 +282,12 @@ public final class AttestationIssuanceConfig {
             return List.of();
         }
         if (!(value instanceof List)) {
-            throw IssuanceException.invalidClient(P_INSTANCES + " '" + field + "' must be a JSON array");
+            throw IssuanceException.invalidClient("'" + field + "' must be a JSON array");
         }
         List<Map<String, Object>> out = new ArrayList<>();
         for (Object item : (List<?>) value) {
             if (!(item instanceof Map)) {
-                throw IssuanceException.invalidClient(P_INSTANCES + " '" + field + "' entries must be JSON objects");
+                throw IssuanceException.invalidClient("'" + field + "' entries must be JSON objects");
             }
             out.add((Map<String, Object>) item);
         }
@@ -233,7 +300,7 @@ public final class AttestationIssuanceConfig {
             return Map.of();
         }
         if (!(value instanceof Map)) {
-            throw IssuanceException.invalidClient(P_INSTANCES + " '" + field + "' must be a JSON object");
+            throw IssuanceException.invalidClient("'" + field + "' must be a JSON object");
         }
         return (Map<String, Object>) value;
     }
