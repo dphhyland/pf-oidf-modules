@@ -45,7 +45,7 @@ class names**, so any class in both places is a potential drift hazard.
 - The attestation/JOSE `common` classes exist tracked in **both** — treat the carve-outs as canonical
   going forward and back-port only deliberately; `openid-federation` is already ahead on the federation
   spec, so new federation work belongs there.
-- Everything with **no carve-out counterpart is canonical here**: the whole SSF transmitter
+- Everything with **no carve-out counterpart is canonical here**: the whole SSF transmitter + receiver
   (`ssf/` + `servlet/ssf/`), `pf-rar-paz-plugin`, the deploy contexts + Terraform, the harness/demo UI.
 
 > ⚠️ **Note (verify intent):** `pf-integration` and the other carve-outs are **public** on
@@ -64,7 +64,7 @@ class names**, so any class in both places is a potential drift hazard.
 | Repo | Relationship | Evidence |
 |---|---|---|
 | `idp-paz-authzen-adapter` (ID-Partners, very active) | **Downstream consumer** — its `demo/pingfederate/` COPYs this repo's built artifacts (`pf-oidf-modules.jar`, `oidf.war`, `pf.plugins.pf-rar-paz-plugin.jar`, `oidf-mock-attesters.json`, `data.zip`, master-key overlay) into a stock PF image. This **agentic context is what live prod (`pingfederate-runtime`) actually runs** — not this repo's minus-RAR `deploy/pingfederate/`. Artifacts are rebuilds, not byte-copies (jar checksums differ), so version skew is possible; discriminate deployed builds by jar size / `unzip -l`. Its `demo/attester/` is the mock attestation-signing service paired with our pre-trusted `oidf-mock-attesters.json`. |
-| `idp-pingfed-ssf-servelet` (local) | **Downstream demo** of this repo **and** `idp-scim-service`: docker-compose proving the SSF transmitter end-to-end on real PF + real Postgres. Carries a prebuilt module jar and a byte-identical copy of the Identity Object Model DDL. |
+| `idp-pingfed-ssf-servelet` (local) | **Downstream demo** of this repo **and** `idp-scim-service`: docker-compose proving the SSF transmitter **and receiver** end-to-end on real PF + real Postgres (incl. the loopback RFC 8935 push → receiver → grant-revocation stage). Also **deployed publicly on Railway** (project `ssf-demo`): UI at `ssf-demo-ui-production.up.railway.app`, transmitter at `pingfederate-ssf-production.up.railway.app`. Carries a prebuilt module jar and a byte-identical copy of the Identity Object Model DDL. |
 | `idp-scim-service` (local, "ldm-copilot") | **Upstream data model**: owns `spec/identity-object-model.sql` (the `idm.entry` Postgres/JSONB object-class store) and the governed migration workflow. Our `LdmSsfStore` (dialect `ldm`) writes `ssfStream`/`ssfStreamSubject`/`ssfPendingSet` entries against that schema; the SSF classes are registered there by `migrations/0001-add-shared-signals-ssf.sql`. A schema contract, not shared Java — schema changes must go through that repo's review workflow. |
 | `idp-ping-rar-plugin` (ID-Partners, 2024) | **Conceptual ancestor only**: an older RAR `AuthorizationDetailProcessor` (`au.com.idpartners.…RARAuthDetailsProcessor`, PF 12.1.3). `pf-rar-paz-plugin` re-implements the same PF extension point under the oidf namespace with real decisioning; no shared source. |
 

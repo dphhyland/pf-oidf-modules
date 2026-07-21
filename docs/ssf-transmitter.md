@@ -1,9 +1,11 @@
-# SSF Transmitter (CAEP/RISC) for PingFederate
+# SSF Transmitter + Receiver (CAEP/RISC) for PingFederate
 
-An OpenID Shared Signals Framework 1.0 transmitter implemented as PingFederate servlets: PF emits
-CAEP/RISC Security Event Tokens (SETs) about what it observes, with spec-proper stream management, push
-(RFC 8935) and poll (RFC 8936) delivery, an optional Kafka fan-out, PF-native JDBC persistence, and
-receiver authentication via PF's own OAuth tokens.
+An OpenID Shared Signals Framework 1.0 **transmitter and receiver** implemented as PingFederate
+servlets. Transmitter: PF emits CAEP/RISC Security Event Tokens (SETs) about what it observes, with
+spec-proper stream management, push (RFC 8935) and poll (RFC 8936) delivery, an optional Kafka
+fan-out, PF-native JDBC persistence, and receiver authentication via PF's own OAuth tokens.
+Receiver: PF accepts SETs from another transmitter, verifies them, and acts (grant revocation) —
+see [Receiver (inbound SETs)](#receiver-inbound-sets).
 
 Normative refs: OpenID SSF 1.0, CAEP 1.0, RISC 1.0, RFC 8417 (SET), RFC 8935 (push), RFC 8936 (poll),
 RFC 9493 (subject identifiers), RFC 7662 (introspection).
@@ -255,3 +257,13 @@ Config (`OIDF_SSF_RECEIVER_*`): `receiverExpectedIssuer` (turns the receiver on)
 Proven live by the demo's loopback stage: a logout on the demo PF → the transmitter's push executor
 POSTs the signed SET to the same PF's receiver endpoint → verified against `/pf/JWKS` → grant-revocation
 action runs.
+
+## Demo
+
+The `idp-pingfed-ssf-servelet` repo is the runnable demo of all of the above: a docker-compose stack
+(PF 13.0.3 with the module merged into `pf-runtime.war` + a Postgres carrying the Identity Object
+Model, `storeDialect=ldm`), an 11-stage end-to-end probe, and a browser UI. The same stack runs
+**publicly on Railway**:
+
+- UI: https://ssf-demo-ui-production.up.railway.app
+- Transmitter metadata: https://pingfederate-ssf-production.up.railway.app/.well-known/ssf-configuration

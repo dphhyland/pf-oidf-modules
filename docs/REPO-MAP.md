@@ -16,7 +16,8 @@ The five capabilities:
    [attestation-issuance.md](attestation-issuance.md).
 3. **OpenID Federation 1.0** — trust-anchor/entity/fetch/list/resolve servlets, explicit (§12.2) and
    transparent automatic (§12.1) client registration.
-4. **SSF 1.0 transmitter** (Shared Signals: CAEP + RISC Security Event Tokens) — `ssf/` + `servlet/ssf/`.
+4. **SSF 1.0 transmitter + receiver** (Shared Signals: CAEP + RISC Security Event Tokens, both
+   directions) — `ssf/` + `servlet/ssf/`.
 5. **RAR → PingAuthorize** (`pf-rar-paz-plugin/`) — a true PF SDK `AuthorizationDetailProcessor` plugin
    bridging RFC 9396 `authorization_details` to a PingAuthorize governance-engine decision.
 
@@ -38,7 +39,7 @@ The five capabilities:
 
 - **`com/` is the tracked mirror; `src/main/java` is gitignored.** Building requires
   `cp -R com/* src/main/java/com/` (the build tree also holds what git must never publish).
-- **Clean-room vs decompiled:** all **80 tracked** classes are clean-room authored. A further **22
+- **Clean-room vs decompiled:** all **103 tracked** classes are clean-room authored. A further **22
   CFR-decompiled PingFederate classes** (headers say `Decompiled with CFR 0.152`) exist only on local
   disk, gitignored — they are Ping IP and are excluded from the public repo by design. One authored
   class (`ClientEntityAuthorizer`) is also gitignored because its canonical home moved to the private
@@ -81,15 +82,20 @@ attester signer (`JwsSigner` ← `OpenBaoTransitSigner` / `LocalJwkSigner`, sele
   also publishes the attestation context consumed by `pf-rar-paz-plugin`. `OIDFederationUtils` (CFR) —
   the `validateTrustChain(...)` OGNL hook.
 
-### `ssf` + `servlet/ssf` — the SSF 1.0 transmitter (42 tracked)
-See [ssf-transmitter.md](ssf-transmitter.md) for the full design. In brief: RFC 8417 SET minting with
-PF's JWKS key (`SetMinter`), stream management + RFC 8936 poll + RFC 8935 push with retry/dead-letter
-(`StreamManagementService`, `PushDeliveryService`), event fan-out (`SsfEventEmitter`, `SsfEventBridge`,
-`CaepRiscEvents`), three store backends behind `SsfStore` (`InMemorySsfStore` per-node dev,
-`JdbcSsfStore` 3-table durable, `LdmSsfStore` → the ID Partners Identity Object Model), optional
-reflective Kafka fan-out (`KafkaSetPublisher`), receiver auth by PF introspection
+### `ssf` + `servlet/ssf` — the SSF 1.0 transmitter + receiver (42 tracked)
+See [ssf-transmitter.md](ssf-transmitter.md) for the full design. **Transmitter:** RFC 8417 SET minting
+with PF's JWKS key (`SetMinter`), stream management + RFC 8936 poll + RFC 8935 push with
+retry/dead-letter (`StreamManagementService`, `PushDeliveryService`), event fan-out (`SsfEventEmitter`,
+`SsfEventBridge`, `CaepRiscEvents`), three store backends behind `SsfStore` (`InMemorySsfStore`
+per-node dev, `JdbcSsfStore` 3-table durable, `LdmSsfStore` → the ID Partners Identity Object Model),
+optional reflective Kafka fan-out (`KafkaSetPublisher`), API auth by PF introspection
 (`PfIntrospectionReceiverAuthenticator`), SCIM subject management (`ScimSubjectService`), env/sysprop/
-init-param layered config (`SsfConfiguration`, `SsfSupport`).
+init-param layered config (`SsfConfiguration`, `SsfSupport`). **Receiver:** RFC 8935 push intake with
+JWKS verification + `jti` dedup (`SsfReceiverServlet`, `SetVerifier`, `ReceivedSet`,
+`SsfReceiverService`), an RFC 8936 poll client (`PollReceiverClient`), remote-stream registration
+(`ReceiverStreamClient`), and event-type-dispatched actions — verified `session-revoked` /
+`account-disabled` revokes the subject's PF OAuth grants (`ReceiverActionHandler`,
+`PfReceiverActions` via `AccessGrantManagerAccessor`).
 
 ## HTTP surface
 
@@ -103,6 +109,7 @@ init-param layered config (`SsfConfiguration`, `SsfSupport`).
 | `/ssf/streams`, `/ssf/status`, `/ssf/subjects:add`, `/ssf/subjects:remove`, `/ssf/verify` | `SsfStreamManagementServlet` | SSF stream API |
 | `/ssf/poll` | `SsfPollServlet` | RFC 8936 |
 | `/ssf/scim/v2/Users[/*]` | `SsfScimSubjectServlet` | provisioning → stream subjects |
+| `/ssf/receiver/events` | `SsfReceiverServlet` | RFC 8935 push intake (receiver side); GET lists received SETs |
 | *(filter)* `/idp/init_logout.openid` | `LogoutEventFilter` | logout → CAEP session-revoked; registered in `pf-runtime.war` web.xml by the assemble script |
 | *(filter)* `/as/token.oauth2` | `TokenEndpointAutoRegistrationFilter` (mirror-only) | OIDF §12.1 automatic registration |
 
@@ -154,7 +161,7 @@ performs the token exchange against PF).
 | [attestation-issuance.md](attestation-issuance.md) | the hosted attester — SPIFFE JWT-SVID → minted client attestation |
 | [sd-jwt-attestation.md](sd-jwt-attestation.md) | SD-JWT attestation encoding (selective disclosure) |
 | [sd-jwt-federation-disclosure.md](sd-jwt-federation-disclosure.md) | federation-gated disclosure per-AS |
-| [ssf-transmitter.md](ssf-transmitter.md) | the SSF/CAEP/RISC transmitter end to end |
+| [ssf-transmitter.md](ssf-transmitter.md) | the SSF/CAEP/RISC transmitter + receiver end to end (public demo: `idp-pingfed-ssf-servelet`) |
 | [REPO-MAP.md](REPO-MAP.md) | this document |
 | [RELATED-REPOS.md](RELATED-REPOS.md) | the ecosystem / overlap map |
 
