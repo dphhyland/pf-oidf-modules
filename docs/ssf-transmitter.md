@@ -167,6 +167,25 @@ Other PF events (credential change, provisioning-driven disable/enable) call the
 `SsfEventBridge` methods from their own hook (an OGNL criterion, a provisioning notification, or the SCIM
 servlet, which already emits RISC `account-disabled` on deprovision).
 
+### PF's native audit stream → SETs (wired)
+
+`SsfAuditLogSource` consumes **PingFederate's own security-audit events**: at SSF boot it attaches a
+log4j2 appender — programmatically, no `log4j2.xml` edit — to PF's five audit loggers (the ones behind
+`audit.log`: IdP/SP/AS/STS/client-registration). Every audit record carries its fields in the log
+event's ThreadContext (`event`, `subject`, `status`, `sri`, …); `AuditEventMapper` translates them:
+`status=success` + non-blank subject + a mapped event name → a SET via the bridge. The default
+vocabulary maps PF's session-termination events (`SLO`, `SESSION_REVOKED`, `SESSION_DELETED`,
+`AUTHN_SESSION_DELETED`, `SRI_REVOKED`) to CAEP `session-revoked` — so any logout path PF audits
+signals, not just the filtered endpoint. Settings: `auditEventsEnabled` (default `true`),
+`auditEventMap` — an `EVENT=action` CSV that extends/overrides the vocabulary (action ∈
+`session-revoked` | `credential-change` | `account-disabled` | `account-enabled`; empty action removes
+a default), e.g. `OIDF_SSF_AUDIT_EVENT_MAP="PWD_CHANGE=credential-change,SLO="`.
+
+Because a logout can now be seen twice (the filter **and** the audit `SLO` entry), `SsfEventBridge`
+suppresses a duplicate (event type, subject) emission within a 5-second window — overlapping sources
+are safe to run together. Both directions are fail-soft: the appender never throws into PF's audit
+pipeline, and a failed attach just logs and disables audit sourcing.
+
 ## SCIM subject management
 
 Provisioning drives who is monitored. `POST`/`PUT` a SCIM user carrying the SSF extension to make it a
