@@ -74,6 +74,12 @@
   body[data-view="principles"] [data-tab="authz"]{display:none!important}
   body[data-view="deploy"] [data-tab="principles"],
   body[data-view="authz"] [data-tab="principles"]{display:none!important}
+  body[data-view="mint"] [data-tab="principles"],
+  body[data-view="mint"] [data-tab="deploy"],
+  body[data-view="mint"] [data-tab="authz"]{display:none!important}
+  body[data-view="principles"] [data-tab="mint"],
+  body[data-view="deploy"] [data-tab="mint"],
+  body[data-view="authz"] [data-tab="mint"]{display:none!important}
   /* principles cards */
   .pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:12px}
   .pcard{background:#0b0f14;border:1px solid var(--line);border-radius:10px;padding:13px 15px}
@@ -112,6 +118,7 @@
     <button class="tab" data-view-btn="principles" type="button">Principles</button>
     <button class="tab" data-view-btn="deploy" type="button">① Deployment flow</button>
     <button class="tab" data-view-btn="authz" type="button">② Authentication &amp; authorization</button>
+    <button class="tab" data-view-btn="mint" type="button">③ Attestation minting</button>
   </nav>
   <!-- ══════════ PRINCIPLES (overview) ══════════ -->
   <p class="muted" data-tab="principles">What this is, and the ideas behind it — how agent identity is made
@@ -898,21 +905,73 @@
     </div>
   </section>
 
-  <!-- Phase 3 — the hosted attester (server-side minting) — #mint -->
-  <section class="step open" id="mint" data-tab="deploy" style="margin-top:26px">
-    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">3</span>
-      <h2>Mint an attestation from a SPIFFE SVID — the hosted attester</h2>
+  <!-- ══════════ ③ ATTESTATION MINTING — the hosted attester ══════════ -->
+  <p class="lead" data-tab="mint" style="margin-top:2px">Where the attestation <b>comes from</b>. Earlier flows had the
+    browser sign the Client Attestation itself. In production the workload holds no attester key — it presents its <b>SPIFFE
+    identity</b> and <b>PingFederate mints the attestation server-side</b>, signing with a key that lives in the vault.</p>
+  <p class="muted" data-tab="mint" style="margin:0 0 16px">The workload proves it is a legitimate instance (its SVID) and that it
+    holds its own instance key (a proof of possession); the attester binds that key, folds in the SVID, and signs.</p>
+
+  <section class="step open" id="mintIntro" data-tab="mint">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">▸</span>
+      <h2>The hosted attester — a SPIFFE SVID in, a signed Client Attestation out</h2></div>
+    <div class="bd">
+      <section class="diagram" style="margin:4px 0 6px">
+        <svg viewBox="0 0 1000 300" role="img" aria-label="A workload presents its SVID and PingFederate mints the attestation">
+          <defs><marker id="ahm" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--acc)"/></marker></defs>
+          <text class="zlabel" x="140" y="60">THE WORKLOAD — holds no attester key</text>
+          <text class="zlabel" x="505" y="38">THE HOSTED ATTESTER · PingFederate</text>
+          <text class="zlabel" x="866" y="60">THE CREDENTIAL</text>
+
+          <g class="node active"><rect x="34" y="78" width="212" height="118" rx="8"/>
+            <text class="t1" x="140" y="106">Workload instance</text>
+            <text class="t2" x="140" y="128">instance key → <tspan style="fill:var(--acc)">cnf</tspan></text>
+            <text class="t2" x="140" y="146">SPIFFE JWT-SVID</text>
+            <text class="t2" x="140" y="164">proof of possession</text>
+            <text class="t2" x="140" y="184" style="fill:var(--mut)">— no attester key —</text></g>
+
+          <g class="node active"><rect x="382" y="70" width="246" height="150" rx="8"/>
+            <text class="t1" x="505" y="94">/federation/attestation</text>
+            <text class="t2" x="505" y="116">① validate SVID vs bundle</text>
+            <text class="t2" x="505" y="134">② match SPIFFE-ID binding</text>
+            <text class="t2" x="505" y="152">③ verify instance-key proof</text>
+            <text class="t2" x="505" y="170">④ mint + sign</text>
+            <text class="t2" x="505" y="198" style="fill:var(--mut)">issuance only — not the token endpoint</text></g>
+
+          <g class="node"><rect x="352" y="238" width="306" height="46" rx="8"/>
+            <text class="t1" x="505" y="258">per-client attester key</text>
+            <text class="t2" x="505" y="275">inline JWK · or · OpenBao transit — key stays in the vault</text></g>
+
+          <g class="node active"><rect x="760" y="78" width="210" height="118" rx="8"/>
+            <text class="t1" x="865" y="106">Client Attestation</text>
+            <text class="t2" x="865" y="128"><tspan style="fill:var(--acc)">cnf</tspan> = instance key</text>
+            <text class="t2" x="865" y="146">workload = spiffe_id + SVID</text>
+            <text class="t2" x="865" y="164">authorization_details</text>
+            <text class="t2" x="865" y="184" style="fill:var(--mut)">signed by the attester</text></g>
+
+          <g class="edge active"><path class="flow" d="M246,137 L382,137" marker-end="url(#ahm)"/><text class="lbl" x="314" y="128">SVID · key · proof</text></g>
+          <g class="edge active"><path class="flow" d="M505,238 L505,220" marker-end="url(#ahm)"/><text class="lbl" x="545" y="234">signs</text></g>
+          <g class="edge active"><path class="flow" d="M628,137 L760,137" marker-end="url(#ahm)"/><text class="lbl" x="694" y="128">minted · signed</text></g>
+        </svg>
+        <div class="cap"><b>The workload never signs the attestation and never holds the attester key.</b> It presents its
+          SVID and a proof it holds its instance key; the attester validates both, binds the instance key as <code>cnf</code>,
+          carries the SVID in <code>workload</code>, and signs with the client's <b>own</b> key — inline, or in the vault so the
+          private half never leaves it. The result is a normal Client Attestation, ready to authenticate at the token endpoint.</div>
+      </section>
+    </div>
+  </section>
+
+  <section class="step open" id="mint" data-tab="mint" style="margin-top:20px">
+    <div class="hd"><span class="n" style="font-size:11px;font-weight:700">▶</span>
+      <h2>Mint one — in your browser, against the live attester</h2>
       <span class="s" id="mintStatus"></span></div>
     <div class="bd">
-      <p class="desc"><b>Phase 3 — issuance moves to the server.</b> In Phase 2 the browser <i>was</i> the attester — it
-      signed the Client Attestation itself. Here the workload owns only its <b>instance key</b> and a <b>SPIFFE JWT-SVID</b>;
-      it presents them to PingFederate's <code>/federation/attestation</code> endpoint — the <b>hosted attester</b> — which
-      validates the SVID against the client's configured SPIFFE bundle, checks the SPIFFE ID is bound to the client, verifies
-      the instance-key proof, and <b>mints + signs</b> the attestation with that client's <b>own attester key</b>: an inline
-      JWK, or an <b>OpenBao transit key whose private half never leaves the vault</b>. The workload never signs the
-      attestation and never holds the attester key.</p>
+      <p class="desc">Pick where the attester key lives, then run it. Your browser mints a SPIFFE <b>SVID</b> and a
+        <b>proof of possession</b> of a fresh instance key, and posts them to <code>/federation/attestation</code>. The two
+        options are the <b>same request to the same endpoint</b> — they differ only in which demo client mints, hence where the
+        signing key lives.</p>
       <div class="row" style="gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
-        <span class="row" style="gap:12px" title="Which demo client mints — the two differ only in where the attester key lives">
+        <span class="row" style="gap:12px" title="The two demo clients differ only in where the attester key lives">
           <label class="opt"><input type="radio" name="signer" value="inline" checked> inline JWK · key in client config</label>
           <label class="opt"><input type="radio" name="signer" value="openbao"> OpenBao transit · key stays in the vault</label>
         </span>
