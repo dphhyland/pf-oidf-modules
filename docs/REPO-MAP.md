@@ -8,7 +8,8 @@ other repos in the ecosystem.
 The four capabilities:
 
 1. **OAuth 2.0 Attestation-Based Client Authentication** (`attest_jwt_client_auth` + DPoP combined mode,
-   optional SD-JWT encoding with selective disclosure) — `common/` + the challenge servlet + OGNL hooks.
+   optional SD-JWT encoding with selective disclosure) — `common/` + the challenge servlet + OGNL hooks —
+   plus a hosted **issuance endpoint** (`/federation/attestation`: a SPIFFE JWT-SVID → a minted attestation).
 2. **OpenID Federation 1.0** — trust-anchor/entity/fetch/list/resolve servlets, explicit (§12.2) and
    transparent automatic (§12.1) client registration.
 3. **SSF 1.0 transmitter** (Shared Signals: CAEP + RISC Security Event Tokens) — `ssf/` + `servlet/ssf/`.
@@ -48,7 +49,7 @@ The four capabilities:
 
 ## Package inventory (`com.pingidentity.ps.oidf`)
 
-### `common` — attestation / JOSE / federation primitives (21 tracked)
+### `common` — attestation / JOSE / federation primitives (47 tracked)
 Client-attestation verification (`ClientAttestation`, `ClientAttestationVerifier`, `ClientAttestationConfig`,
 `ClientAttestationResult`, `ClientAttestationException`), attester trust (`AttesterKeyResolver` +
 `FederationAttesterKeyResolver` via trust chain / `StaticAttesterKeyResolver` DEV mock), freshness +
@@ -56,11 +57,19 @@ replay (`AttestationChallengeService`, `AttestationReplayCache`, in-memory impls
 dependency-free `MiniRedisClient`, `AttestationSupport` singletons), DPoP combined mode (`DpopProof`,
 `DpopProofValidator`), JOSE helpers (`Jwks`), SD-JWT (`SdJwt`, `SdJwtException`), and the RFC 9396
 entitlement ceiling (`RarEntitlement`).
+Attestation **issuance** primitives (see [attestation-issuance.md](attestation-issuance.md)): SVID
+validation (`SpiffeSvid`, `SpiffeSvidValidator`), the instance-key proof (`InstanceKeyProofValidator`),
+per-client config + one-to-many bindings (`AttestationIssuanceConfig`, `SpiffeBinding`,
+`IssuanceClientResolver`, `IssuanceException`), the minter (`AttestationMinter`), and the pluggable
+attester signer (`JwsSigner` ← `OpenBaoTransitSigner` / `LocalJwkSigner`, selected by `AttesterSigningKey`).
 *Gitignored CFR siblings:* trust-chain validation, PF client store/JWKS access, HTTP gateways
 (`TrustChainValidator`, `PfJwksSigningKeyProvider`, `PfMgmtClientStore`, `HttpTrustControllerGateway`, …).
 
 ### `servlet/attestation` · `servlet/trustanchor` · `servlet/clientregistration`
 - `ClientAttestationChallengeServlet` — `/federation/attestation-challenge` (tracked).
+- `AttestationIssuanceServlet` — `/federation/attestation`, the hosted attester: SPIFFE JWT-SVID →
+  minted attestation (tracked). `PfIssuanceClientResolver` reads the client + `attestation_*` extended
+  properties at runtime. See [attestation-issuance.md](attestation-issuance.md).
 - `AttestationMetadataConfig` — attestation entries in OP metadata (tracked).
 - `OpenIdFederationServlet` (CFR) — `/.well-known/openid-federation`, `/federation/{entity,fetch,list,resolve}`.
 - `OpenIdRegistrationServlet` + registration internals (CFR) — OIDF explicit registration.
@@ -83,6 +92,7 @@ init-param layered config (`SsfConfiguration`, `SsfSupport`).
 | Endpoint | Class | Notes |
 |---|---|---|
 | `/federation/attestation-challenge` | `ClientAttestationChallengeServlet` | attestation freshness challenges |
+| `/federation/attestation` | `AttestationIssuanceServlet` | issues a client attestation from a SPIFFE JWT-SVID |
 | `/.well-known/openid-federation`, `/federation/{entity,fetch,list,resolve}` | `OpenIdFederationServlet` (CFR) | federation trust anchor/leaf |
 | `/federation/registered-clients` | `RegisteredClientsServlet` (mirror-only) | demo listing |
 | `/.well-known/ssf-configuration` | `SsfConfigurationServlet` | SSF metadata, loadOnStartup |
@@ -137,6 +147,7 @@ performs the token exchange against PF).
 | [BUILD-AND-DEPLOY.md](BUILD-AND-DEPLOY.md) | build → package → config-as-code → Railway; "what makes a green token" |
 | [automatic-registration.md](automatic-registration.md) | OIDF §12.1 transparent registration at the token endpoint |
 | [deploy-pingfederate-railway.md](deploy-pingfederate-railway.md) | reproduce the live PF on Railway (TCP-proxy gotcha) |
+| [attestation-issuance.md](attestation-issuance.md) | the hosted attester — SPIFFE JWT-SVID → minted client attestation |
 | [sd-jwt-attestation.md](sd-jwt-attestation.md) | SD-JWT attestation encoding (selective disclosure) |
 | [sd-jwt-federation-disclosure.md](sd-jwt-federation-disclosure.md) | federation-gated disclosure per-AS |
 | [ssf-transmitter.md](ssf-transmitter.md) | the SSF/CAEP/RISC transmitter end to end |

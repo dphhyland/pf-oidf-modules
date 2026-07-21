@@ -20,6 +20,10 @@ transmitter**, and a **RAR → PingAuthorize** plugin.
   client selectively discloses only the claims a given AS needs (e.g. one entitlement entry, minimal
   `workload`). Advertised via `client_attestation_formats_supported` and gated per client by the
   `attestation_format` extended property. See [docs/sd-jwt-attestation.md](docs/sd-jwt-attestation.md).
+- **Attestation issuance endpoint** — a SPIFFE workload exchanges its JWT-SVID for a freshly-minted Client
+  Attestation bound to its instance key, signed by the client's own attester key (OpenBao transit or an
+  inline JWK), with one-to-many SPIFFE-ID bindings. Issuance only; the AS-side verification path is
+  unchanged. See [docs/attestation-issuance.md](docs/attestation-issuance.md).
 
 > The modules **augment** PingFederate's native client authentication: PingFederate identifies the
 > client, and a static utility invoked from **OAuth token-endpoint issuance criteria** performs the
@@ -141,6 +145,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | GET | `/federation/entity`, `/federation/fetch`, `/federation/list`, `/federation/resolve` | Federation operations |
 | POST | `/federation/register` | Explicit client registration (`entity-statement+jwt` or `trust-chain+json`) |
 | POST | `/federation/attestation-challenge` | **New** — issues a one-time challenge; returns `{"attestation_challenge","expires_in"}` with `Cache-Control: no-store` |
+| POST | `/federation/attestation` | **New** — issues a Client Attestation to a workload that authenticates with a SPIFFE JWT-SVID; returns `{"attestation","expires_in"}` with `Cache-Control: no-store`. See [docs/attestation-issuance.md](docs/attestation-issuance.md) |
 
 ---
 
@@ -181,6 +186,29 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `challengeTtlSeconds` | `300` | Challenge lifetime |
 | `challengeCacheMaxEntries` | `8192` | Bound on outstanding challenges |
 | `replayCacheMaxEntries` | `8192` | Bound on the shared `jti` replay cache |
+
+### Attestation issuance servlet (`AttestationIssuanceServlet`)
+
+Issues a Client Attestation to a SPIFFE workload (`POST /federation/attestation`). See
+[docs/attestation-issuance.md](docs/attestation-issuance.md) for the full flow.
+
+| init-param | Default | Notes |
+|------------|---------|-------|
+| `challengeRequired` | `false` | Require the instance-key proof to carry a valid server challenge |
+| `openBaoUrl` | env `OIDF_OPENBAO_URL` / `OPENBAO_ADDR` / … | OpenBao/Vault address for transit signing |
+| `openBaoToken` | env `OIDF_OPENBAO_TOKEN` / `OPENBAO_TOKEN` / … | Token permitted to read/sign the transit key |
+
+Per-client issuance config is read from **extended properties** (provisioned at registration / admin / Terraform):
+
+| Extended property | Effect |
+|-------------------|--------|
+| `attestation_issuer` | Attester identity: `iss` of minted attestations **and** the required SVID `aud` |
+| `attestation_spiffe_bundle` | SPIFFE trust-bundle JWKS used to verify presented SVIDs |
+| `attestation_signing_key_ref` *or* `attestation_signing_jwk` | Attester key — an OpenBao transit key name **or** an inline private JWK (set exactly one) |
+| `attestation_instances` | JSON array binding one-or-more SPIFFE IDs to the client, each with optional `entitlement` and `metadata` |
+| `attestation_entitlement` | Optional client-level RFC 9396 ceiling; per-instance entitlements must be ⊆ this |
+| `attestation_issued_ttl` | Lifetime (s) of the minted attestation (default `300`) |
+| `attestation_trust_domain` | Optional: pin the accepted SVID trust domain |
 
 ### Per-client tuning (client **extended properties**, read by the runtime hook)
 
