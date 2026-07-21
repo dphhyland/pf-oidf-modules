@@ -1,19 +1,23 @@
 # Repo map — what is in pf-oidf-modules
 
-A single Maven/Java project carrying **four distinct capabilities** for PingFederate, plus the
+A single Maven/Java project carrying **five distinct capabilities** for PingFederate, plus the
 config-as-code deploy surface for the whole Railway environment and the demo/verification tooling.
 Companion doc: [RELATED-REPOS.md](RELATED-REPOS.md) — how this repo relates to (and overlaps with) the
 other repos in the ecosystem.
 
-The four capabilities:
+The five capabilities:
 
-1. **OAuth 2.0 Attestation-Based Client Authentication** (`attest_jwt_client_auth` + DPoP combined mode,
-   optional SD-JWT encoding with selective disclosure) — `common/` + the challenge servlet + OGNL hooks —
-   plus a hosted **issuance endpoint** (`/federation/attestation`: a SPIFFE JWT-SVID → a minted attestation).
-2. **OpenID Federation 1.0** — trust-anchor/entity/fetch/list/resolve servlets, explicit (§12.2) and
+1. **OAuth 2.0 Attestation-Based Client Authentication** — the *verification* side
+   (`attest_jwt_client_auth` + DPoP combined mode, optional SD-JWT encoding with selective disclosure) —
+   `common/` + the challenge servlet + OGNL hooks.
+2. **Attestation issuance — the hosted attester** (`AttestationIssuanceServlet` → `/federation/attestation`):
+   a SPIFFE workload exchanges its JWT-SVID for a minted Client Attestation bound to its instance key,
+   signed by the client's per-client attester key (OpenBao transit or inline JWK). See
+   [attestation-issuance.md](attestation-issuance.md).
+3. **OpenID Federation 1.0** — trust-anchor/entity/fetch/list/resolve servlets, explicit (§12.2) and
    transparent automatic (§12.1) client registration.
-3. **SSF 1.0 transmitter** (Shared Signals: CAEP + RISC Security Event Tokens) — `ssf/` + `servlet/ssf/`.
-4. **RAR → PingAuthorize** (`pf-rar-paz-plugin/`) — a true PF SDK `AuthorizationDetailProcessor` plugin
+4. **SSF 1.0 transmitter** (Shared Signals: CAEP + RISC Security Event Tokens) — `ssf/` + `servlet/ssf/`.
+5. **RAR → PingAuthorize** (`pf-rar-paz-plugin/`) — a true PF SDK `AuthorizationDetailProcessor` plugin
    bridging RFC 9396 `authorization_details` to a PingAuthorize governance-engine decision.
 
 ## Top-level layout

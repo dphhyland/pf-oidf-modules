@@ -2,8 +2,9 @@
 
 PingFederate add-on modules implementing **OpenID Federation** (trust anchor / intermediate /
 leaf endpoints, explicit client registration, and runtime trust-chain validation) plus
-**OAuth 2.0 Attestation-Based Client Authentication** with DPoP, an **SSF 1.0 (CAEP/RISC)
-transmitter**, and a **RAR → PingAuthorize** plugin.
+**OAuth 2.0 Attestation-Based Client Authentication** with DPoP, a **hosted attestation issuer**
+(SPIFFE JWT-SVID → minted client attestation), an **SSF 1.0 (CAEP/RISC) transmitter**, and a
+**RAR → PingAuthorize** plugin.
 
 > **Orientation:** [docs/REPO-MAP.md](docs/REPO-MAP.md) is the full inventory of what's in this repo
 > (packages, endpoints, deploy contexts, harness, build). [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md)
