@@ -1,5 +1,15 @@
 # Related repos — the ecosystem and overlap map
 
+> **⚠️ 2026-07-21 — the module code has a new canonical home:**
+> [`dphhyland/pf-agentic-identity`](https://github.com/dphhyland/pf-agentic-identity) absorbed (with
+> history) the four carve-outs (`oidf-jose`, `client-attestation`, `openid-federation` @ draft-10,
+> `pf-integration`), the standalone `pf-rar-paz-plugin`, `idp-gm-api`, and this repo's tracked
+> attestation-issuer + SSF sources and `deploy/` IaC tree (its `deploy-*` workflows moved too;
+> `deploy-demo.yml` stays here). One `mvn package` there builds oidf.war + all plugin jars + gm-api.war.
+> **New module/deploy work happens there**; this repo lives on as the demo + harness + ops home.
+> Absorbed repos remain live for links but are backport-only — see the monorepo's
+> `docs/PROVENANCE.md`. The overlap map below is the pre-monorepo picture.
+
 Where `pf-oidf-modules` sits among the other repos on this machine / on GitHub, what overlaps with
 what, and which repo is the source of truth for each piece. Verified against the actual working trees
 (2026-07-19); companion to [REPO-MAP.md](REPO-MAP.md).
