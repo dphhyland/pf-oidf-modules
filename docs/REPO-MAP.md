@@ -140,8 +140,11 @@ unmanaged part of `data.zip`.
 - Workflows: `deploy-demo.yml` (UI, push-triggered), `deploy-fedhost.yml`, `deploy-lighthouse.yml`
   (push-triggered per path), `deploy-pingfederate.yml` (**manual scaffold** — build-in-CI from the
   private `pf-integration` carve-out; secrets not yet provisioned).
-- Branch→env: `sd-jwt-rar-paz` → staging, `main` → production. Known skew: staging service `lighthouse`
-  vs prod `lighthouse-prod` (same for fedhost).
+- Branch→env: `sd-jwt-rar-paz` → staging, `main` → production. **Level since the 2026-07-22 promotion**
+  (merge `02b5abd`, PR #2): main carries the full SSF transmitter+receiver, attestation issuance, the
+  audit-stream event source, and the SD-JWT removal; the prod services (`pf-demo-ui`, `lighthouse-prod`,
+  `fedhost-prod`) were redeployed from it. The PF runtime itself is not push-deployed (manual workflow).
+  Known skew: staging service `lighthouse` vs prod `lighthouse-prod` (same for fedhost).
 
 ## Harness
 

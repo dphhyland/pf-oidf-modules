@@ -19,6 +19,7 @@ deploy/<service>/
 
 - **CI** — `.github/workflows/deploy-<service>.yml`, path-filtered to `deploy/<service>/**`, applies
   `vars.<env>.env` then `railway up`s. Branch→env: `sd-jwt-rar-paz`→staging, `main`→production
+  (level since the 2026-07-22 promotion merge — staging and production content match until they diverge again)
   (same mapping as `deploy-demo.yml`). Tokens: repo secrets `RAILWAY_TOKEN_STAGING` / `_PROD`.
 - **Secrets never live in git.** Master keys, licenses, vault tokens, DB creds → Railway/GitHub
   secrets, referenced by name. `vars.*.env` holds only non-secret config.

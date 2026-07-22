@@ -12,7 +12,7 @@
 
 Where `pf-oidf-modules` sits among the other repos on this machine / on GitHub, what overlaps with
 what, and which repo is the source of truth for each piece. Verified against the actual working trees
-(2026-07-19); companion to [REPO-MAP.md](REPO-MAP.md).
+(2026-07-19, updated through the 2026-07-22 main promotion); companion to [REPO-MAP.md](REPO-MAP.md).
 
 ## Lineage at a glance
 
