@@ -1,5 +1,8 @@
 # pf-oidf-modules
 
+> **📦 Module code has moved:** the canonical home of the modules described below (federation, client-attestation authenticator + issuer, SSF, RAR→PingAuthorize, GM API) is now the [**pf-agentic-identity** monorepo](https://github.com/dphhyland/pf-agentic-identity) — one `mvn package` builds everything. **This repo lives on as the demo + harness + ops home** (demo UI, deploy history, docs). See [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md) for the full map.
+
+
 PingFederate add-on modules implementing **OpenID Federation** (trust anchor / intermediate /
 leaf endpoints, explicit client registration, and runtime trust-chain validation) plus
 **OAuth 2.0 Attestation-Based Client Authentication** with DPoP, a **hosted attestation issuer**
@@ -17,10 +20,6 @@ leaf endpoints, explicit client registration, and runtime trust-chain validation
   `attest_jwt_client_auth_dpop` ([draft-ietf-oauth-attestation-based-client-auth-09](https://www.ietf.org/archive/id/draft-ietf-oauth-attestation-based-client-auth-09.html)),
   with the Client Attester trusted via the federation trust chain, a challenge endpoint for
   replay/freshness, and DPoP "combined mode" ([RFC 9449](https://www.rfc-editor.org/rfc/rfc9449))
-- **Optional SD-JWT attestation encoding** — the Client Attestation may be presented as an SD-JWT so the
-  client selectively discloses only the claims a given AS needs (e.g. one entitlement entry, minimal
-  `workload`). Advertised via `client_attestation_formats_supported` and gated per client by the
-  `attestation_format` extended property. See [docs/sd-jwt-attestation.md](docs/sd-jwt-attestation.md).
 - **Attestation issuance endpoint** — a SPIFFE workload exchanges its JWT-SVID for a freshly-minted Client
   Attestation bound to its instance key, signed by the client's own attester key (OpenBao transit or an
   inline JWK), with one-to-many SPIFFE-ID bindings. Issuance only; the AS-side verification path is
@@ -166,7 +165,7 @@ The result is `target/pf-oidf-modules-0.0.1-SNAPSHOT.jar`.
 | `clientAttestationSigningAlgValuesSupported` | `RS256,PS256,ES256` | Advertised attestation algs |
 | `clientAttestationPopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised PoP algs |
 | `dpopSigningAlgValuesSupported` | `ES256,RS256,PS256` | Advertised DPoP algs |
-| `clientAttestationFormatsSupported` | `jwt,sd-jwt` | Advertised attestation encodings (`client_attestation_formats_supported`) |
+| `clientAttestationFormatsSupported` | `jwt` | Advertised attestation encodings (`client_attestation_formats_supported`) |
 | `attestationChallengeEndpointEnabled` | `true` | Advertise `challenge_endpoint` in metadata |
 
 ### Registration servlet (`OpenIdRegistrationServlet` → `RegistrationConfiguration`)
@@ -224,7 +223,6 @@ Per-client issuance config is read from **extended properties** (provisioned at 
 | `attestation_accepted_algs` | RS/PS/ES/EdDSA | Allowed attestation signing algs |
 | `attestation_pop_algs` | RS/PS/ES/EdDSA | Allowed PoP signing algs |
 | `attestation_dpop_algs` | RS/PS/ES/EdDSA | Allowed DPoP signing algs |
-| `attestation_format` | accept both | `jwt` = plain only · `sd-jwt` = require SD-JWT · `either` (default) |
 
 ---
 
@@ -322,3 +320,8 @@ replay cache, the challenge service, and JWK thumbprint binding. These tests nee
   corrected (`TrustChainValidator`, `HttpTrustControllerGateway`, `FederationService`). Prefer the
   original source if you have it.
 ```
+
+## License
+
+Apache-2.0 — see [LICENSE](LICENSE). PingFederate is a Ping Identity product and is not
+included in this repository.

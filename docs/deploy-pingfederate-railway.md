@@ -30,7 +30,7 @@ oidf.war  pf-oidf-modules.jar  jose4j-0.9.6.jar  oidf-mock-attesters.json
 ```
 
 `data.zip` is a real PF config archive (demo OAuth client `https://rp.example.com`, the `attestATM` access-token
-manager, and PF's master key `pf.jwk`). The module jars carry the attestation + SD-JWT verifier. If that dir still
+manager, and PF's master key `pf.jwk`). The module jars carry the attestation verifier. If that dir still
 exists, you can deploy straight from it (Step 3). If it's gone, rebuild it (Step 2).
 
 > ⚠️ That `data.zip` + `pf.jwk` are **prod-derived** (they embed prod's master key and admin creds). Fine for a
@@ -167,7 +167,7 @@ env $ENVPREFIX railway variables -s <demo-service> \
 curl -sk -X POST "https://<tcp-host>:<tcp-port>/oidf/federation/attestation-challenge"
 # → {"attestation_challenge":"…","expires_in":300}
 
-# full token flow: open the demo, walk steps 1–4 (Plain JWT + SD-JWT toggles) → HTTP 200, token issued.
+# full token flow: open the demo, walk steps 1–4 (plain-JWT attestation) → HTTP 200, token issued.
 ```
 
 PF log confirms success:

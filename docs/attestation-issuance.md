@@ -10,6 +10,10 @@ is **issuance only**: the AS-side verification / client-authentication path is u
 
 `AttestationIssuanceServlet` → `POST /federation/attestation`.
 
+**See it / ship it:** the demo's **③ Attestation minting** tab walks the whole flow (SVID → mint → decode)
+with an inline-JWK vs OpenBao-transit toggle (`harness/ui/`). To deploy against a live PF, follow
+[../deploy/pingfederate/DEMO-MINT-DEPLOY.md](../deploy/pingfederate/DEMO-MINT-DEPLOY.md).
+
 ## Roles (three keys, not one)
 
 The client does **not** sign the attestation. Three distinct parties/keys are involved:
@@ -77,7 +81,8 @@ The attester key is **per client** and its backing is a configuration choice, be
 - `attestation_signing_key_ref` → **OpenBao transit** (`OpenBaoTransitSigner`) — the private key never
   enters PF's JVM; PF signs via `POST /v1/transit/sign` with `marshaling_algorithm=jws`. The vault
   address/token are environment-level (`openBaoUrl`/`openBaoToken` init-params, else `OIDF_OPENBAO_URL` /
-  `OPENBAO_ADDR` / … and `OIDF_OPENBAO_TOKEN` / `OPENBAO_TOKEN` / …).
+  `OPENBAO_ADDR` / … and `OIDF_OPENBAO_TOKEN` / `OPENBAO_TOKEN` / …). Give PF a **least-privilege token** —
+  a policy allowing only `read`+`sign` on that one transit key, not the vault root token.
 - `attestation_signing_jwk` → an **inline private JWK** (`LocalJwkSigner`, EC or RSA) — simple for
   dev/demo.
 
