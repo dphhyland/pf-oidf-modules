@@ -83,18 +83,19 @@ public final class AttestationIssuanceConfig {
             }
         }
 
+        // The SPIFFE trust bundle is optional: a wallet-only client (which proves instances with a Wallet
+        // Instance Attestation, not an SVID) configures none. When absent, the bundle is empty and a SPIFFE
+        // request to this client fails cleanly at SVID validation; wallet requests never consult it.
         String bundleJson = trimmed(props.get(P_BUNDLE));
-        if (bundleJson == null) {
-            throw IssuanceException.invalidClient("missing " + P_BUNDLE + " (SPIFFE trust bundle)");
-        }
         List<JsonWebKey> bundleKeys;
-        try {
-            bundleKeys = new JsonWebKeySet(bundleJson).getJsonWebKeys();
-        } catch (JoseException e) {
-            throw IssuanceException.invalidClient(P_BUNDLE + " is not a valid JWKS");
-        }
-        if (bundleKeys.isEmpty()) {
-            throw IssuanceException.invalidClient(P_BUNDLE + " carries no keys");
+        if (bundleJson == null) {
+            bundleKeys = List.of();
+        } else {
+            try {
+                bundleKeys = new JsonWebKeySet(bundleJson).getJsonWebKeys();
+            } catch (JoseException e) {
+                throw IssuanceException.invalidClient(P_BUNDLE + " is not a valid JWKS");
+            }
         }
 
         List<Map<String, Object>> ceiling = parseAuthDetails(trimmed(props.get(P_ENTITLEMENT)), P_ENTITLEMENT);
@@ -244,10 +245,19 @@ public final class AttestationIssuanceConfig {
             }
             @SuppressWarnings("unchecked")
             Map<String, Object> entry = (Map<String, Object>) item;
+            // The instance subject: a SPIFFE ID, or a wallet instance id. Accept any of the aliases so a
+            // wallet binding reads naturally; they populate the same format-neutral binding subject.
             Object idValue = entry.get("spiffe_id");
-            String spiffeId = idValue == null ? null : String.valueOf(idValue).trim();
-            if (spiffeId == null || spiffeId.isBlank()) {
-                throw IssuanceException.invalidClient(P_INSTANCES + " entry is missing 'spiffe_id'");
+            if (idValue == null) {
+                idValue = entry.get("subject");
+            }
+            if (idValue == null) {
+                idValue = entry.get("wallet_instance");
+            }
+            String subject = idValue == null ? null : String.valueOf(idValue).trim();
+            if (subject == null || subject.isBlank()) {
+                throw IssuanceException.invalidClient(
+                        P_INSTANCES + " entry is missing an instance id (spiffe_id / subject / wallet_instance)");
             }
             List<Map<String, Object>> entitlement = asObjectList(entry.get("entitlement"), "entitlement");
             Map<String, Object> metadata = asObject(entry.get("metadata"), "metadata");
@@ -257,10 +267,10 @@ public final class AttestationIssuanceConfig {
                     RarEntitlement.authorize(entitlement, clientCeiling);
                 } catch (ClientAttestationException e) {
                     throw IssuanceException.invalidClient(
-                            "instance '" + spiffeId + "' entitlement exceeds the client-level ceiling");
+                            "instance '" + subject + "' entitlement exceeds the client-level ceiling");
                 }
             }
-            out.add(new SpiffeBinding(spiffeId, entitlement, metadata));
+            out.add(new SpiffeBinding(subject, entitlement, metadata));
         }
         return out;
     }

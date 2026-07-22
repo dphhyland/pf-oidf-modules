@@ -67,9 +67,19 @@ class AttestationIssuanceConfigTest {
     }
 
     @Test
-    void missingBundleIsRejected() throws Exception {
+    void missingBundleIsAllowedForWalletOnlyClients() throws Exception {
+        // The SPIFFE trust bundle is optional: a wallet-only client configures none. The config parses,
+        // with an empty bundle; a SPIFFE request would then fail cleanly at SVID validation.
         Map<String, String> props = baseProps();
         props.remove(AttestationIssuanceConfig.P_BUNDLE);
+        AttestationIssuanceConfig config = AttestationIssuanceConfig.fromProperties(props);
+        assertTrue(config.bundleKeys().isEmpty());
+    }
+
+    @Test
+    void malformedBundleIsRejected() throws Exception {
+        Map<String, String> props = baseProps();
+        props.put(AttestationIssuanceConfig.P_BUNDLE, "{ not a jwks");
         IssuanceException e = assertThrows(IssuanceException.class,
                 () -> AttestationIssuanceConfig.fromProperties(props));
         assertEquals("invalid_client", e.error());

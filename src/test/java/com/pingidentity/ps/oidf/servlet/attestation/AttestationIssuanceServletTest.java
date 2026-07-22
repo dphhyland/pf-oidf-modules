@@ -18,10 +18,13 @@ import com.pingidentity.ps.oidf.common.ClientAttestationResult;
 import com.pingidentity.ps.oidf.common.ClientAttestationVerifier;
 import com.pingidentity.ps.oidf.common.InMemoryAttestationChallengeService;
 import com.pingidentity.ps.oidf.common.InMemoryAttestationReplayCache;
+import com.pingidentity.ps.oidf.common.InstanceAttestationValidators;
 import com.pingidentity.ps.oidf.common.InstanceKeyProofValidator;
 import com.pingidentity.ps.oidf.common.IssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.IssuanceException;
+import com.pingidentity.ps.oidf.common.SpiffeInstanceAttestationValidator;
 import com.pingidentity.ps.oidf.common.StaticAttesterKeyResolver;
+import com.pingidentity.ps.oidf.common.WalletInstanceAttestationValidator;
 import java.io.ByteArrayInputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -54,10 +57,13 @@ class AttestationIssuanceServletTest {
     private static final String OP_ISSUER = "https://op.example.com";
     private static final String TOKEN_ENDPOINT = OP_ISSUER + "/as/token.oauth2";
     private static final String SPIFFE_ID = "spiffe://banking.demo/payment-agent";
+    private static final String WALLET_PROVIDER = "https://wallet.example.com";
+    private static final String WALLET_INSTANCE_ID = "urn:wallet:instance:abc123";
 
-    private PublicJsonWebKey bundleKey;   // signs SVIDs
-    private PublicJsonWebKey attesterKey; // signs attestations (inline signer)
-    private PublicJsonWebKey instanceKey; // the workload's cnf key
+    private PublicJsonWebKey bundleKey;         // signs SVIDs
+    private PublicJsonWebKey attesterKey;       // signs attestations (inline signer)
+    private PublicJsonWebKey instanceKey;       // the workload's cnf key
+    private PublicJsonWebKey walletProviderKey; // signs Wallet Instance Attestations
     private AttestationIssuanceServlet servlet;
 
     @BeforeEach
@@ -65,9 +71,16 @@ class AttestationIssuanceServletTest {
         bundleKey = ec("svid-key-1");
         attesterKey = ec("attester-1");
         instanceKey = ec("instance-1");
+        walletProviderKey = ec("wp-1");
         servlet = new AttestationIssuanceServlet();
         servlet.setClientResolver(fixedResolver(config()));
         servlet.setAttesterSigningKey(new AttesterSigningKey(null, null)); // inline JWK signing
+        // Wire both instance-attestation formats: SPIFFE (SVID) and wallet (WIA).
+        JsonWebKey wpPub = JsonWebKey.Factory.newJwk(publicParams(walletProviderKey));
+        servlet.setInstanceValidators(new InstanceAttestationValidators(List.of(
+                new SpiffeInstanceAttestationValidator(),
+                new WalletInstanceAttestationValidator(
+                        new StaticAttesterKeyResolver(Map.of(WALLET_PROVIDER, List.of(wpPub)))))));
     }
 
     @Test
@@ -189,6 +202,55 @@ class AttestationIssuanceServletTest {
         IssuanceException e = assertThrows(IssuanceException.class,
                 () -> servlet.issue(request(SPIFFE_ID, ISSUER, newProof(null), List.of())));
         assertEquals("invalid_instance_proof", e.error());
+    }
+
+    // ---- wallet (WIA) instance-attestation format -------------------------------------------------
+
+    @Test
+    void walletWiaHappyPathIssuesVerifiableAttestation() throws Exception {
+        Map<String, Object> body = servlet.issue(walletRequest(publicParams(instanceKey)));
+        assertNotNull(body.get("attestation"));
+        assertRoundTrips((String) body.get("attestation"));
+    }
+
+    @Test
+    void walletAttestationCarriesWalletWorkload() throws Exception {
+        Map<String, Object> body = servlet.issue(walletRequest(publicParams(instanceKey)));
+        JsonWebSignature jws = new JsonWebSignature();
+        jws.setCompactSerialization((String) body.get("attestation"));
+        JwtClaims claims = JwtClaims.parse(jws.getUnverifiedPayload());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> workload = (Map<String, Object>) claims.getClaimValue("workload");
+        assertEquals("wallet", workload.get("attested_by"));
+        assertEquals(WALLET_PROVIDER, workload.get("wallet_provider"));
+        assertEquals(WALLET_INSTANCE_ID, workload.get("wallet_instance"));
+    }
+
+    @Test
+    void walletBoundKeyMismatchIsRejected() throws Exception {
+        // The WIA binds a different key than the instance_key the request asks to bind.
+        PublicJsonWebKey otherKey = ec("other-instance");
+        IssuanceException e = assertThrows(IssuanceException.class,
+                () -> servlet.issue(walletRequest(publicParams(otherKey))));
+        assertEquals("invalid_instance_proof", e.error());
+    }
+
+    @Test
+    void walletUnknownInstanceIsRejected() throws Exception {
+        AttestationIssuanceServlet.IssuanceRequest req = walletRequest(publicParams(instanceKey));
+        req.instanceAttestation = wia(WALLET_PROVIDER, "urn:wallet:instance:stranger", ISSUER,
+                publicParams(instanceKey), 600L);
+        IssuanceException e = assertThrows(IssuanceException.class, () -> servlet.issue(req));
+        assertEquals("instance_not_authorized", e.error());
+    }
+
+    @Test
+    void walletUntrustedProviderIsRejected() throws Exception {
+        AttestationIssuanceServlet.IssuanceRequest req = walletRequest(publicParams(instanceKey));
+        req.instanceAttestation = wia("https://rogue.example.com", WALLET_INSTANCE_ID, ISSUER,
+                publicParams(instanceKey), 600L);
+        IssuanceException e = assertThrows(IssuanceException.class, () -> servlet.issue(req));
+        assertEquals("invalid_instance_attestation", e.error());
     }
 
     // ---- doPost (HTTP layer) ----------------------------------------------------------------------
@@ -348,7 +410,8 @@ class AttestationIssuanceServletTest {
         props.put(AttestationIssuanceConfig.P_INSTANCES,
                 "[{\"spiffe_id\":\"" + SPIFFE_ID + "\","
                         + "\"entitlement\":[{\"type\":\"sales_agent\",\"sales_regions\":[\"EMEA\"]}],"
-                        + "\"metadata\":{\"region\":\"EMEA\"}}]");
+                        + "\"metadata\":{\"region\":\"EMEA\"}},"
+                        + "{\"wallet_instance\":\"" + WALLET_INSTANCE_ID + "\",\"metadata\":{\"tenant\":\"gold\"}}]");
         return AttestationIssuanceConfig.fromProperties(props);
     }
 
@@ -379,6 +442,31 @@ class AttestationIssuanceServletTest {
 
     private String newProof(String challenge) throws Exception {
         return proof(instanceKey, ISSUER, UUID.randomUUID().toString(), challenge);
+    }
+
+    /** A wallet request: proves the instance with a WIA (signed by the wallet provider) carrying {@code cnfJwk}. */
+    private AttestationIssuanceServlet.IssuanceRequest walletRequest(Map<String, Object> cnfJwk) throws Exception {
+        AttestationIssuanceServlet.IssuanceRequest req = new AttestationIssuanceServlet.IssuanceRequest();
+        req.clientId = CLIENT_ID;
+        req.instanceKey = publicParams(instanceKey);
+        req.instanceAttestation = wia(WALLET_PROVIDER, WALLET_INSTANCE_ID, ISSUER, cnfJwk, 600L);
+        req.format = "wallet";
+        req.proof = newProof(null);
+        return req;
+    }
+
+    private String wia(String iss, String sub, String aud, Map<String, Object> cnfJwk, long expOffset)
+            throws Exception {
+        JwtClaims c = new JwtClaims();
+        c.setIssuer(iss);
+        c.setSubject(sub);
+        c.setAudience(aud);
+        c.setIssuedAtToNow();
+        c.setExpirationTime(NumericDate.fromSeconds(NumericDate.now().getValue() + expOffset));
+        Map<String, Object> cnf = new LinkedHashMap<>();
+        cnf.put("jwk", cnfJwk);
+        c.setClaim("cnf", cnf);
+        return signCompact(walletProviderKey, "ES256", "wallet-instance-attestation+jwt", c);
     }
 
     private void assertRoundTrips(String attestation) throws Exception {

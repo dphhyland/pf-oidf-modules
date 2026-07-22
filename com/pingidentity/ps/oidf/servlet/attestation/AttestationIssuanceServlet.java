@@ -11,17 +11,22 @@ import com.pingidentity.ps.oidf.common.CimdIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationConfig;
 import com.pingidentity.ps.oidf.common.CompositeIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationException;
+import com.pingidentity.ps.oidf.common.InstanceAttestationValidator;
+import com.pingidentity.ps.oidf.common.InstanceAttestationValidators;
+import com.pingidentity.ps.oidf.common.InstanceIdentity;
 import com.pingidentity.ps.oidf.common.IssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.IssuanceException;
 import com.pingidentity.ps.oidf.common.InstanceKeyProofValidator;
 import com.pingidentity.ps.oidf.common.JdkHttpGetClient;
+import com.pingidentity.ps.oidf.common.Jwks;
 import com.pingidentity.ps.oidf.common.JwsSigner;
 import com.pingidentity.ps.oidf.common.PfMgmtClientStore;
 import com.pingidentity.ps.oidf.common.RarEntitlement;
 import com.pingidentity.ps.oidf.common.SpiffeBinding;
-import com.pingidentity.ps.oidf.common.SpiffeSvid;
-import com.pingidentity.ps.oidf.common.SpiffeSvidValidator;
+import com.pingidentity.ps.oidf.common.SpiffeInstanceAttestationValidator;
+import com.pingidentity.ps.oidf.common.StaticAttesterKeyResolver;
 import com.pingidentity.ps.oidf.common.TrustDomainBundles;
+import com.pingidentity.ps.oidf.common.WalletInstanceAttestationValidator;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
@@ -37,17 +42,23 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.jose4j.jwk.JsonWebKey;
+import org.jose4j.jwk.JsonWebKeySet;
 import org.jose4j.json.JsonUtil;
 
 /**
- * Issues a Client Attestation to a workload that proves its identity with a SPIFFE JWT-SVID. A workload
- * that wants to act as an instance of a registered client {@code POST}s here with its {@code client_id},
- * its instance public JWK, its SVID, and a proof of possession of the instance key. The servlet resolves
- * the client's issuance config (attester key, SPIFFE trust bundle, one-to-many instance bindings),
- * validates the SVID against the bundle, checks the SPIFFE ID is bound to the client, verifies the
- * instance-key proof (with challenge/replay protection), enforces the RFC 9396 entitlement ceiling, and
- * mints a short-lived attestation signed with the client's per-client attester key
- * ({@link AttesterSigningKey}: OpenBao transit or inline JWK).
+ * Issues a Client Attestation to a workload that proves its <em>instance</em> identity. The instance-identity
+ * layer is pluggable ({@link InstanceAttestationValidator}): an infrastructure workload proves itself with a
+ * SPIFFE JWT-SVID, a digital wallet with a Wallet Instance Attestation (WIA) issued by its wallet provider,
+ * and further formats (device attestation) could slot in. A workload that wants to act as an instance of a
+ * registered client {@code POST}s here with its {@code client_id}, its instance public JWK, its instance
+ * attestation ({@code svid} or {@code instance_attestation}), and a proof of possession of the instance key.
+ * The servlet resolves the client's issuance config (attester key, trust roots, one-to-many instance
+ * bindings), validates the instance attestation with the selected validator, checks the resulting instance
+ * subject is bound to the client, verifies the instance-key proof (with challenge/replay protection) — and,
+ * when the instance attestation itself binds a key (a WIA {@code cnf}), requires it to equal the key being
+ * bound — enforces the RFC 9396 entitlement ceiling, and mints an attestation signed with the client's
+ * per-client attester key ({@link AttesterSigningKey}: OpenBao transit or inline JWK).
  *
  * <p>This is the <em>issuance</em> side only. The minted attestation is later presented by the workload
  * (with a fresh proof of possession) at the AS token endpoint via the existing client-authentication
@@ -64,7 +75,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     private volatile IssuanceClientResolver clientResolver;
     private volatile AttesterSigningKey attesterSigningKey;
-    private volatile SpiffeSvidValidator svidValidator = new SpiffeSvidValidator();
+    private volatile InstanceAttestationValidators instanceValidators;
     private volatile InstanceKeyProofValidator proofValidator = new InstanceKeyProofValidator();
     private boolean challengeRequired;
 
@@ -107,8 +118,9 @@ public class AttestationIssuanceServlet extends HttpServlet {
         if (request.instanceKey == null || request.instanceKey.isEmpty()) {
             throw IssuanceException.invalidRequest("missing instance_key");
         }
-        if (isBlank(request.svid)) {
-            throw IssuanceException.invalidRequest("missing svid");
+        String presented = firstNonBlank(request.instanceAttestation, request.svid);
+        if (isBlank(presented)) {
+            throw IssuanceException.invalidRequest("missing instance attestation (svid or instance_attestation)");
         }
         if (isBlank(request.proof)) {
             throw IssuanceException.invalidRequest("missing proof");
@@ -117,14 +129,13 @@ public class AttestationIssuanceServlet extends HttpServlet {
         // 1. Load the client + status gate; parse its issuance config (bundle source seam).
         AttestationIssuanceConfig config = clientResolver().resolve(request.clientId);
 
-        // 2. Validate the SVID against the client's SPIFFE trust bundle.
-        SpiffeSvid svid = this.svidValidator.validate(
-                request.svid, config.bundleKeys(), config.issuer(), config.expectedTrustDomain());
+        // 2. Validate the instance attestation with the format's validator (SPIFFE SVID, wallet WIA, …).
+        InstanceAttestationValidator validator = instanceValidators().select(request.format, presented);
+        InstanceIdentity instance = validator.validate(presented, config);
 
-        // 3. The SPIFFE ID must be one bound to this client.
-        SpiffeBinding binding = config.bindingFor(svid.spiffeId()).orElseThrow(
-                () -> IssuanceException.spiffeIdNotAuthorized(
-                        "SPIFFE ID is not registered for this client: " + svid.spiffeId()));
+        // 3. The validated instance subject must be one bound to this client.
+        SpiffeBinding binding = config.bindingFor(instance.subject())
+                .orElseThrow(() -> notAuthorized(instance));
 
         // 4. Prove the caller holds the instance key it asks to bind, with freshness + replay protection.
         InstanceKeyProofValidator.Result proof =
@@ -138,6 +149,17 @@ public class AttestationIssuanceServlet extends HttpServlet {
         }
         if (!AttestationSupport.replayCache().firstSeen(request.clientId, proof.jti(), PROOF_REPLAY_TTL_SECONDS)) {
             throw IssuanceException.invalidInstanceProof("proof jti has already been used (replay)");
+        }
+
+        // 4b. If the instance attestation itself binds a key (a WIA cnf), the key being bound must be that
+        // very key — so the attestation being consumed is about this instance_key, not some other.
+        if (instance.boundKey() != null) {
+            try {
+                Jwks.assertSameKey(instance.boundKey(), Jwks.fromMap(request.instanceKey));
+            } catch (Exception e) {
+                throw IssuanceException.invalidInstanceProof(
+                        "instance_key does not match the key bound by the instance attestation");
+            }
         }
 
         // 5. Resolve the granted entitlement against the effective ceiling.
@@ -159,14 +181,32 @@ public class AttestationIssuanceServlet extends HttpServlet {
                 ? attesterSigningKey().signerFor(config.signingKeyRef(), config.signingJwk())
                 : attesterSigningKey().signerForIssuer(config.issuer());
         String attestation = AttestationMinter.mint(config.issuer(), request.clientId, request.instanceKey,
-                svid, binding.metadata(), granted, config.ttlSeconds(), signer);
+                instance, binding.metadata(), granted, config.ttlSeconds(), signer);
 
         LOGGER.info((Object) ("Issued client attestation: client_id=" + request.clientId
-                + " spiffe_id=" + svid.spiffeId() + " ttl=" + config.ttlSeconds() + "s"));
+                + " format=" + instance.format() + " instance=" + instance.subject()
+                + " ttl=" + config.ttlSeconds() + "s"));
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("attestation", attestation);
         body.put("expires_in", config.ttlSeconds());
         return body;
+    }
+
+    /** The format-appropriate "not registered for this client" error for an unbound instance. */
+    private static IssuanceException notAuthorized(InstanceIdentity instance) {
+        if (SpiffeInstanceAttestationValidator.FORMAT.equals(instance.format())) {
+            return IssuanceException.spiffeIdNotAuthorized(
+                    "SPIFFE ID is not registered for this client: " + instance.subject());
+        }
+        return IssuanceException.instanceNotAuthorized(
+                instance.format() + " instance is not registered for this client: " + instance.subject());
+    }
+
+    private static String firstNonBlank(String a, String b) {
+        if (a != null && !a.isBlank()) {
+            return a;
+        }
+        return b;
     }
 
     // ---- seams for tests / runtime defaults -------------------------------------------------------
@@ -177,6 +217,10 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     void setAttesterSigningKey(AttesterSigningKey key) {
         this.attesterSigningKey = key;
+    }
+
+    void setInstanceValidators(InstanceAttestationValidators validators) {
+        this.instanceValidators = validators;
     }
 
     void setChallengeRequired(boolean required) {
@@ -221,6 +265,68 @@ public class AttestationIssuanceServlet extends HttpServlet {
         return new CimdIssuanceClientResolver(new JdkHttpGetClient(false), TrustDomainBundles.fromJson(bundles));
     }
 
+    InstanceAttestationValidators instanceValidators() {
+        InstanceAttestationValidators local = this.instanceValidators;
+        if (local == null) {
+            synchronized (this) {
+                if (this.instanceValidators == null) {
+                    this.instanceValidators = defaultInstanceValidators();
+                }
+                local = this.instanceValidators;
+            }
+        }
+        return local;
+    }
+
+    /**
+     * The runtime default instance-attestation validators. SPIFFE is always present; the wallet (WIA)
+     * validator is opt-in — enabled only when the accepted wallet providers' keys are configured
+     * ({@code OIDF_WALLET_PROVIDER_JWKS}), which for now uses a static trust map. (A federation-backed wallet
+     * validator slots in the same way once its trust-chain wiring is supplied; inject it via
+     * {@link #setInstanceValidators} until then.) Overridable so the lazy-init path is testable.
+     */
+    protected InstanceAttestationValidators defaultInstanceValidators() {
+        List<InstanceAttestationValidator> validators = new ArrayList<>();
+        validators.add(new SpiffeInstanceAttestationValidator());
+        InstanceAttestationValidator wallet = walletValidatorFromEnv();
+        if (wallet != null) {
+            validators.add(wallet);
+        }
+        return new InstanceAttestationValidators(validators);
+    }
+
+    /**
+     * Builds the wallet (WIA) validator from {@code OIDF_WALLET_PROVIDER_JWKS} — a JSON object mapping each
+     * accepted wallet-provider entity id to its JWKS — trusting those keys statically. Returns null (wallet
+     * disabled) when unset or unparseable.
+     */
+    static InstanceAttestationValidator walletValidatorFromEnv() {
+        String jwks = env("oidf.wallet.provider.jwks", "OIDF_WALLET_PROVIDER_JWKS");
+        if (jwks == null) {
+            return null;
+        }
+        Map<String, List<JsonWebKey>> byProvider = new LinkedHashMap<>();
+        try {
+            JsonUtil.parseJson(jwks).forEach((provider, value) -> {
+                if (value instanceof Map) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> jwksObj = (Map<String, Object>) value;
+                        byProvider.put(provider, new JsonWebKeySet(JsonUtil.toJson(jwksObj)).getJsonWebKeys());
+                    } catch (Exception ignored) {
+                        // skip a malformed provider entry
+                    }
+                }
+            });
+        } catch (Exception e) {
+            return null;
+        }
+        if (byProvider.isEmpty()) {
+            return null;
+        }
+        return new WalletInstanceAttestationValidator(new StaticAttesterKeyResolver(byProvider));
+    }
+
     /** The attester issuer → signing-key maps for metadata-sourced configs, from the environment. */
     static AttesterSigningKey configureIssuerKeys(AttesterSigningKey key) {
         Map<String, String> keyRefs = parseStringMap(env("oidf.attester.issuer.keys", "OIDF_ATTESTER_ISSUER_KEYS"));
@@ -262,6 +368,8 @@ public class AttestationIssuanceServlet extends HttpServlet {
         request.clientId = asString(json.get("client_id"));
         request.instanceKey = asObject(json.get("instance_key"));
         request.svid = asString(json.get("svid"));
+        request.instanceAttestation = asString(json.get("instance_attestation"));
+        request.format = asString(json.get("instance_attestation_format"));
         request.proof = asString(json.get("proof"));
         request.requestedDetails = asObjectList(json.get("authorization_details"));
         return request;
@@ -363,7 +471,9 @@ public class AttestationIssuanceServlet extends HttpServlet {
     static final class IssuanceRequest {
         String clientId;
         Map<String, Object> instanceKey;
-        String svid;
+        String svid;                 // SPIFFE JWT-SVID (back-compat field; a SPIFFE instance attestation)
+        String instanceAttestation;  // any-format instance attestation (SVID, wallet WIA, …)
+        String format;               // optional explicit instance_attestation_format ("spiffe" | "wallet" | …)
         String proof;
         List<Map<String, Object>> requestedDetails = List.of();
     }
