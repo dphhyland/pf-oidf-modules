@@ -6,11 +6,14 @@ package com.pingidentity.ps.oidf.servlet.attestation;
 import com.pingidentity.ps.oidf.common.AttestationIssuanceConfig;
 import com.pingidentity.ps.oidf.common.AttestationMinter;
 import com.pingidentity.ps.oidf.common.AttestationSupport;
+import com.pingidentity.ps.oidf.common.AttesterKeyResolver;
 import com.pingidentity.ps.oidf.common.AttesterSigningKey;
 import com.pingidentity.ps.oidf.common.CimdIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationConfig;
 import com.pingidentity.ps.oidf.common.CompositeIssuanceClientResolver;
 import com.pingidentity.ps.oidf.common.ClientAttestationException;
+import com.pingidentity.ps.oidf.common.FederationWalletProviderKeyResolver;
+import com.pingidentity.ps.oidf.common.HttpTrustControllerGateway;
 import com.pingidentity.ps.oidf.common.InstanceAttestationValidator;
 import com.pingidentity.ps.oidf.common.InstanceAttestationValidators;
 import com.pingidentity.ps.oidf.common.InstanceIdentity;
@@ -25,6 +28,7 @@ import com.pingidentity.ps.oidf.common.RarEntitlement;
 import com.pingidentity.ps.oidf.common.SpiffeBinding;
 import com.pingidentity.ps.oidf.common.SpiffeInstanceAttestationValidator;
 import com.pingidentity.ps.oidf.common.StaticAttesterKeyResolver;
+import com.pingidentity.ps.oidf.common.TrustChainValidator;
 import com.pingidentity.ps.oidf.common.TrustDomainBundles;
 import com.pingidentity.ps.oidf.common.WalletInstanceAttestationValidator;
 import java.io.IOException;
@@ -280,10 +284,9 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     /**
      * The runtime default instance-attestation validators. SPIFFE is always present; the wallet (WIA)
-     * validator is opt-in — enabled only when the accepted wallet providers' keys are configured
-     * ({@code OIDF_WALLET_PROVIDER_JWKS}), which for now uses a static trust map. (A federation-backed wallet
-     * validator slots in the same way once its trust-chain wiring is supplied; inject it via
-     * {@link #setInstanceValidators} until then.) Overridable so the lazy-init path is testable.
+     * validator is opt-in, and its wallet-provider trust is federation-backed when configured
+     * ({@code OIDF_TRUST_CONTROLLER_HOST} + {@code OIDF_ATTESTER_OP_ISSUER}), else a static provider→JWKS map
+     * ({@code OIDF_WALLET_PROVIDER_JWKS}), else disabled. Overridable so the lazy-init path is testable.
      */
     protected InstanceAttestationValidators defaultInstanceValidators() {
         List<InstanceAttestationValidator> validators = new ArrayList<>();
@@ -296,11 +299,42 @@ public class AttestationIssuanceServlet extends HttpServlet {
     }
 
     /**
-     * Builds the wallet (WIA) validator from {@code OIDF_WALLET_PROVIDER_JWKS} — a JSON object mapping each
-     * accepted wallet-provider entity id to its JWKS — trusting those keys statically. Returns null (wallet
-     * disabled) when unset or unparseable.
+     * Builds the wallet (WIA) validator, preferring federation-backed wallet-provider trust over the static
+     * map, or null when neither is configured (wallet disabled).
      */
     static InstanceAttestationValidator walletValidatorFromEnv() {
+        InstanceAttestationValidator federation = federationWalletValidatorFromEnv();
+        return federation != null ? federation : staticWalletValidatorFromEnv();
+    }
+
+    /**
+     * Builds a wallet validator whose provider keys are resolved through the OpenID Federation trust chain
+     * ({@link FederationWalletProviderKeyResolver}), mirroring the AS-side attester wiring. Enabled when the
+     * trust controller host ({@code OIDF_TRUST_CONTROLLER_HOST}) and the hosted attester's own entity id
+     * ({@code OIDF_ATTESTER_OP_ISSUER}, the relying party in the WIA trust chain) are set; returns null
+     * otherwise. {@code OIDF_TRUST_CONTROLLER_IGNORE_SSL} relaxes TLS for a dev trust controller.
+     */
+    static InstanceAttestationValidator federationWalletValidatorFromEnv() {
+        String trustControllerHost = env("oidf.trust.controller.host", "OIDF_TRUST_CONTROLLER_HOST");
+        String opIssuer = env("oidf.attester.op.issuer", "OIDF_ATTESTER_OP_ISSUER");
+        if (trustControllerHost == null || opIssuer == null) {
+            return null;
+        }
+        boolean ignoreSsl = Boolean.parseBoolean(
+                String.valueOf(env("oidf.trust.controller.ignore.ssl", "OIDF_TRUST_CONTROLLER_IGNORE_SSL")));
+        TrustChainValidator chainValidator = new TrustChainValidator(
+                new HttpTrustControllerGateway(new JdkHttpGetClient(ignoreSsl), trustControllerHost),
+                trustControllerHost);
+        AttesterKeyResolver resolver = new FederationWalletProviderKeyResolver(chainValidator, opIssuer);
+        return new WalletInstanceAttestationValidator(resolver);
+    }
+
+    /**
+     * Builds a wallet validator from {@code OIDF_WALLET_PROVIDER_JWKS} — a JSON object mapping each accepted
+     * wallet-provider entity id to its JWKS — trusting those keys statically (dev / no-federation). Returns
+     * null when unset or unparseable.
+     */
+    static InstanceAttestationValidator staticWalletValidatorFromEnv() {
         String jwks = env("oidf.wallet.provider.jwks", "OIDF_WALLET_PROVIDER_JWKS");
         if (jwks == null) {
             return null;

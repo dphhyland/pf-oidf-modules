@@ -83,7 +83,9 @@ key. Result: `format="wallet"`, `subject=sub`, `trustDomain=iss`, `boundKey=cnf.
 `AttesterKeyResolver` — the same interface
 [`FederationAttesterKeyResolver`](../com/pingidentity/ps/oidf/common/FederationAttesterKeyResolver.java)
 implements. In production a wallet provider is an OpenID Federation entity (`openid_wallet_provider`),
-resolved by trust chain; for dev,
+resolved by trust chain via
+[`FederationWalletProviderKeyResolver`](../com/pingidentity/ps/oidf/common/FederationWalletProviderKeyResolver.java)
+(the wallet analogue of the attester resolver, reusing `TrustChainValidator`); for dev,
 [`StaticAttesterKeyResolver`](../com/pingidentity/ps/oidf/common/StaticAttesterKeyResolver.java) trusts a
 configured provider→JWKS map. No new trust plumbing.
 
@@ -115,10 +117,22 @@ format).
 
 ## Wiring
 
-The servlet's default registry is SPIFFE-always plus the wallet validator when
-`OIDF_WALLET_PROVIDER_JWKS` (a provider→JWKS map, trusted statically) is set — opt-in exactly like CIMD. A
-federation-backed wallet validator drops into the same registry once its trust-chain wiring is supplied;
-inject it via `setInstanceValidators(...)` until then.
+The servlet's default registry is SPIFFE-always plus an opt-in wallet validator, whose wallet-provider
+trust comes from the first source configured:
+
+1. **Federation** (preferred) — set `OIDF_TRUST_CONTROLLER_HOST` (the trust anchor / controller base URL)
+   and `OIDF_ATTESTER_OP_ISSUER` (the hosted attester's own federation entity id, the relying party in the
+   WIA trust chain). The servlet builds `TrustChainValidator` → `HttpTrustControllerGateway` (exactly the
+   AS-side attester wiring in `ClientAttestationUtils.getValidator`) →
+   [`FederationWalletProviderKeyResolver`](../com/pingidentity/ps/oidf/common/FederationWalletProviderKeyResolver.java),
+   which validates a chain from the WIA's `iss` (the wallet provider) up to the anchor and reads its
+   WIA-signing keys from `metadata.openid_wallet_provider.jwks` (then `oauth_client_attester.jwks`, then the
+   federation `jwks`). `OIDF_TRUST_CONTROLLER_IGNORE_SSL` relaxes TLS for a dev controller.
+2. **Static** (dev / no federation) — `OIDF_WALLET_PROVIDER_JWKS`, a provider→JWKS map trusted directly via
+   `StaticAttesterKeyResolver`.
+3. **Disabled** — neither set; the registry is SPIFFE-only.
+
+A custom registry can still be injected via `setInstanceValidators(...)`.
 
 ## Reused vs new
 
@@ -141,15 +155,19 @@ inject it via `setInstanceValidators(...)` until then.
   `WalletInstanceAttestationValidator`, `InstanceAttestationValidators` — added; servlet wired to
   select-by-format with the `boundKey` check; config generalised (optional bundle, `subject` /
   `wallet_instance` ids); `invalid_instance_attestation` / `instance_not_authorized` error codes added.
+- `FederationWalletProviderKeyResolver` — added; the runtime default wallet validator now resolves
+  wallet-provider trust through the OpenID Federation trust chain when `OIDF_TRUST_CONTROLLER_HOST` +
+  `OIDF_ATTESTER_OP_ISSUER` are set, falling back to the static `OIDF_WALLET_PROVIDER_JWKS` map.
 - Tests: `WalletInstanceAttestationValidatorTest` (13), `InstanceAttestationValidatorsTest` (8), extended
-  `AttestationIssuanceServletTest` (wallet happy path + `boundKey` mismatch + unbound + untrusted provider),
-  SPIFFE/minter/config back-compat suites green.
+  `AttestationIssuanceServletTest` (wallet happy path + `boundKey` mismatch + unbound + untrusted provider)
+  and `ServletEnvWiringTest` (federation-preferred wallet wiring), SPIFFE/minter/config back-compat suites
+  green.
 
 ## Not in this design (later)
 
 - Device attestation validators (Android Key Attestation, Apple App Attest, WebAuthn) — new
   `InstanceAttestationValidator` implementations, no endpoint change.
-- Federation-backed wallet-provider resolution wired into the runtime default (mirrors the pending
-  federation client-resolver wiring: op issuer + trust controller).
 - Sourcing wallet bindings from federation / CIMD metadata (the `oauth_client_attestation` block gains a
   `wallet_instances` / provider-allowlist shape).
+- A live end-to-end federation test against a real trust controller (the current wiring test covers
+  construction/selection; chain resolution is exercised by `FederationAttesterKeyResolver`'s own tests).
