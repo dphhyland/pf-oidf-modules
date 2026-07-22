@@ -82,6 +82,42 @@ class AttestationIssuanceConfigMetadataTest {
     }
 
     @Test
+    void ttlNotANumberIsRejected() {
+        Map<String, Object> att = att();
+        att.put("issued_ttl", "abc");
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> AttestationIssuanceConfig.fromEntityMetadata(att, bundle)).error());
+    }
+
+    @Test
+    void nonPositiveTtlIsRejected() {
+        Map<String, Object> att = att();
+        att.put("issued_ttl", -5);
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> AttestationIssuanceConfig.fromEntityMetadata(att, bundle)).error());
+    }
+
+    @Test
+    void instancesNotAListIsRejected() {
+        Map<String, Object> att = att();
+        att.put("instances", "nope");
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> AttestationIssuanceConfig.fromEntityMetadata(att, bundle)).error());
+    }
+
+    @Test
+    void emptyMetadataIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> AttestationIssuanceConfig.fromEntityMetadata(Map.of(), bundle)).error());
+    }
+
+    @Test
+    void trustDomainBundlesMalformedJsonThrows() {
+        assertThrows(IllegalArgumentException.class, () -> TrustDomainBundles.fromJson("{ not json"));
+        assertThrows(IllegalArgumentException.class, () -> TrustDomainBundles.fromJson("{\"d\":\"not-a-jwks\"}"));
+    }
+
+    @Test
     void trustDomainBundlesFromJson() {
         String json = "{\"banking.demo\":{\"keys\":[{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"k\","
                 + "\"x\":\"f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU\",\"y\":\"x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0\"}]}}";

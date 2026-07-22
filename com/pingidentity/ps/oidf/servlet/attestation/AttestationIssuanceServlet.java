@@ -213,7 +213,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
         return chain.size() == 1 ? chain.get(0) : new CompositeIssuanceClientResolver(chain);
     }
 
-    private static IssuanceClientResolver cimdResolverFromEnv() {
+    static IssuanceClientResolver cimdResolverFromEnv() {
         String bundles = env("oidf.cimd.trust.bundles", "OIDF_CIMD_TRUST_BUNDLES");
         if (bundles == null) {
             return null;
@@ -222,7 +222,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
     }
 
     /** The attester issuer → signing-key maps for metadata-sourced configs, from the environment. */
-    private static AttesterSigningKey configureIssuerKeys(AttesterSigningKey key) {
+    static AttesterSigningKey configureIssuerKeys(AttesterSigningKey key) {
         Map<String, String> keyRefs = parseStringMap(env("oidf.attester.issuer.keys", "OIDF_ATTESTER_ISSUER_KEYS"));
         Map<String, Map<String, Object>> jwks = parseObjectMap(env("oidf.attester.issuer.jwks", "OIDF_ATTESTER_ISSUER_JWKS"));
         return key.withIssuerKeys(keyRefs, jwks);
@@ -314,7 +314,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
         return s == null || s.isBlank();
     }
 
-    private static String env(String sysProp, String envVar) {
+    static String env(String sysProp, String envVar) {
         String v = System.getProperty(sysProp);
         if (v == null || v.isBlank()) {
             v = System.getenv(envVar);
@@ -323,7 +323,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
     }
 
     /** Parses a JSON object of {@code issuer → key-name} strings; returns empty on absent/malformed. */
-    private static Map<String, String> parseStringMap(String json) {
+    static Map<String, String> parseStringMap(String json) {
         if (json == null) {
             return Map.of();
         }
@@ -342,7 +342,7 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     /** Parses a JSON object of {@code issuer → JWK-object} maps; returns empty on absent/malformed. */
     @SuppressWarnings("unchecked")
-    private static Map<String, Map<String, Object>> parseObjectMap(String json) {
+    static Map<String, Map<String, Object>> parseObjectMap(String json) {
         if (json == null) {
             return Map.of();
         }

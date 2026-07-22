@@ -59,4 +59,44 @@ class CompositeAndIssuerSignerTest {
         assertEquals("server_error",
                 assertThrows(IssuanceException.class, () -> ask.signerForIssuer("https://nobody")).error());
     }
+
+    @Test
+    void withIssuerKeysToleratesNullMaps() {
+        AttesterSigningKey ask = new AttesterSigningKey(null, null).withIssuerKeys(null, null);
+        assertEquals("server_error",
+                assertThrows(IssuanceException.class, () -> ask.signerForIssuer("https://x")).error());
+    }
+
+    @Test
+    void fromEnvironmentReadsSystemProperties() {
+        try {
+            System.setProperty("oidf.openbao.url", "http://openbao.local:8200");
+            System.setProperty("oidf.openbao.token", "t");
+            // exercises the sysprop-first resolution chain; keyRef signing needs the vault, so it errors closed
+            AttesterSigningKey ask = AttesterSigningKey.fromEnvironment()
+                    .withIssuerKeys(Map.of("https://a", "some-key"), Map.of());
+            assertEquals("server_error",
+                    assertThrows(IssuanceException.class, () -> ask.signerForIssuer("https://a")).error());
+        } finally {
+            System.clearProperty("oidf.openbao.url");
+            System.clearProperty("oidf.openbao.token");
+        }
+    }
+
+    @Test
+    void emptyCompositeIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> CompositeIssuanceClientResolver.of().resolve("x")).error());
+    }
+
+    @Test
+    void signerForIssuerPrefersKeyRefOverInline() throws Exception {
+        // issuer in both maps → the transit key ref wins; with no vault configured that surfaces as server_error
+        // (proving the key-ref branch was taken, not the inline JWK).
+        AttesterSigningKey ask = new AttesterSigningKey(null, null).withIssuerKeys(
+                Map.of("https://a", "some-transit-key"),
+                Map.of("https://a", TestJwts.privateParams(TestJwts.ec("x"))));
+        assertEquals("server_error",
+                assertThrows(IssuanceException.class, () -> ask.signerForIssuer("https://a")).error());
+    }
 }

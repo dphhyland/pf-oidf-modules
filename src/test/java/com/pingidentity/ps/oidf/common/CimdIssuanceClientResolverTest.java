@@ -121,6 +121,83 @@ class CimdIssuanceClientResolverTest {
                 assertThrows(IssuanceException.class, () -> resolver.resolve(CID)).error());
     }
 
+    @Test
+    void userinfoInUrlIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://user@203.0.113.10/x")).error());
+    }
+
+    @Test
+    void fragmentInUrlIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://203.0.113.10/x#frag")).error());
+    }
+
+    @Test
+    void dotSegmentsAreRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://203.0.113.10/a/../b")).error());
+    }
+
+    @Test
+    void malformedUriIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://203.0.113.10/ x")).error());
+    }
+
+    @Test
+    void multicastHostIsRejectedSsrf() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://224.0.0.1/cimd")).error());
+    }
+
+    @Test
+    void linkLocalHostIsRejectedSsrf() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://169.254.1.1/cimd")).error());
+    }
+
+    @Test
+    void blankDocumentIsRejected() {
+        http.docs.put(CID, "   ");
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve(CID)).error());
+    }
+
+    @Test
+    void attestationBlockUnderMetadataIsRead() throws Exception {
+        publish(CID, Map.of("client_id", CID, "metadata", Map.of("oauth_client_attestation", attBlock())));
+        assertEquals(ISSUER, resolver.resolve(CID).issuer());
+    }
+
+    @Test
+    void nonMapInstanceYieldsNoBundleAndIsRejected() throws Exception {
+        Map<String, Object> att = new HashMap<>(attBlock());
+        att.put("instances", List.of("not-an-object"));
+        publish(CID, Map.of("client_id", CID, "oauth_client_attestation", att));
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve(CID)).error());
+    }
+
+    @Test
+    void hostlessUrlIsRejected() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https:///cimd")).error());
+    }
+
+    @Test
+    void anyLocalHostIsRejectedSsrf() {
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve("https://0.0.0.0/cimd")).error());
+    }
+
+    @Test
+    void metadataNotAnObjectYieldsNoAttestationBlock() {
+        http.docs.put(CID, JsonUtil.toJson(Map.of("client_id", CID, "metadata", "not-an-object")));
+        assertEquals("invalid_client",
+                assertThrows(IssuanceException.class, () -> resolver.resolve(CID)).error());
+    }
+
     /** In-memory HttpGetClient keyed by URL. */
     static final class FakeHttp implements HttpGetClient {
         final Map<String, String> docs = new HashMap<>();
