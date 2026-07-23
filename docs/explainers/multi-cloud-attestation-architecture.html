@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-Cloud Attested Identity — SPIFFE + OpenID Federation + PingFederate</title>
+<style>
+  :root{
+    --ink:#0b1220; --paper:#f4f6fa;
+    --seal:#e0a44b; --seal-deep:#c98a30; --signal:#2fb6bd;
+    --aws:#ff9900; --azure:#3b90ff; --gcp:#34a853;
+    --bg:var(--paper); --bg-raise:#ffffff; --bg-sunk:#eaeef4;
+    --fg:#131a26; --fg-soft:#4a5568; --fg-faint:#77839a;
+    --line:#d7dde8; --line-soft:#e6eaf1;
+    --card:#ffffff; --card-line:#dde3ee;
+    --accent:var(--seal); --accent-ink:#5a3d08;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Menlo,Consolas,monospace;
+    --maxw:1120px;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#0b1220; --bg-raise:#111a2b; --bg-sunk:#080d17;
+      --fg:#eef2f8; --fg-soft:#aab6cc; --fg-faint:#75839c;
+      --line:#233149; --line-soft:#1a2437;
+      --card:#0f1829; --card-line:#26344c;
+      --accent:#eab765; --accent-ink:#1c1305;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f6fa; --bg-raise:#ffffff; --bg-sunk:#eaeef4;
+    --fg:#131a26; --fg-soft:#4a5568; --fg-faint:#77839a;
+    --line:#d7dde8; --line-soft:#e6eaf1; --card:#ffffff; --card-line:#dde3ee;
+    --accent:var(--seal); --accent-ink:#5a3d08;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0b1220; --bg-raise:#111a2b; --bg-sunk:#080d17;
+    --fg:#eef2f8; --fg-soft:#aab6cc; --fg-faint:#75839c;
+    --line:#233149; --line-soft:#1a2437; --card:#0f1829; --card-line:#26344c;
+    --accent:#eab765; --accent-ink:#1c1305;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);
+    font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;overflow-x:hidden}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  section{padding:70px 0;border-top:1px solid var(--line-soft)}
+  section:first-child{border-top:0}
+  h1,h2,h3{margin:0;text-wrap:balance;letter-spacing:-.02em;font-weight:680}
+  p{margin:0}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);font-weight:600}
+  .mono{font-family:var(--mono)}
+  .sub{color:var(--fg-soft);font-size:18px;max-width:64ch;margin-top:14px}
+  .sectlabel{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+  .sectlabel .bar{height:1px;flex:1;background:var(--line)}
+  h2.big{font-size:clamp(26px,3.4vw,38px);line-height:1.1}
+  .tag{display:inline-block;font-family:var(--mono);font-size:12.5px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:var(--fg-soft)}
+
+  /* hero */
+  .hero{padding:66px 0 20px}
+  .hero h1{font-size:clamp(34px,5.4vw,56px);line-height:1.03;margin:16px 0 20px}
+  .hero h1 .hl{color:var(--accent)}
+  .hero .lede{font-size:20px;color:var(--fg-soft);max-width:64ch;line-height:1.55}
+  .hero-meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
+
+  /* architecture figure */
+  .arch{border:1px solid var(--card-line);border-radius:18px;background:var(--bg-raise);padding:24px;margin-top:36px}
+  .fedband{position:relative;border:1px solid color-mix(in srgb,var(--accent) 45%,var(--card-line));
+    border-radius:13px;background:color-mix(in srgb,var(--accent) 9%,var(--card));padding:18px 20px;text-align:center}
+  .fedband .kick{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .fedband h3{font-size:20px;margin:7px 0 4px}
+  .fedband .anchor{font-family:var(--mono);font-size:13px;color:var(--fg-soft)}
+  .fedband p{color:var(--fg-soft);font-size:14.5px;margin-top:8px;max-width:70ch;margin-left:auto;margin-right:auto}
+  .rail{display:flex;align-items:center;justify-content:center;gap:10px;margin:14px 0;
+    font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--fg-faint);text-align:center}
+  .rail .ar{color:var(--accent);font-size:16px}
+
+  .plats{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+  .plat{border:1px solid var(--card-line);border-top:3px solid var(--cloud,var(--line));
+    border-radius:12px;background:var(--card);padding:16px 16px 14px;display:flex;flex-direction:column;gap:11px}
+  .plat.aws{--cloud:var(--aws)} .plat.az{--cloud:var(--azure)} .plat.gcp{--cloud:var(--gcp)}
+  .plat-hd{display:flex;align-items:baseline;gap:9px}
+  .plat-hd .cloud{font-weight:680;font-size:16px}
+  .plat-hd .k8s{font-family:var(--mono);font-size:11px;color:var(--fg-faint);border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+  .plat-hd .dotc{width:9px;height:9px;border-radius:50%;background:var(--cloud);flex:none;align-self:center}
+  .plat .td{font-family:var(--mono);font-size:11.5px;color:var(--signal);word-break:break-all}
+  .plat .spire{border:1px dashed var(--line);border-radius:9px;padding:9px 11px;background:var(--bg-sunk);font-size:13.5px}
+  .plat .spire b{font-weight:680} .plat .spire span{color:var(--fg-faint);font-size:12px;display:block;margin-top:1px}
+  .plat .pods{display:flex;flex-wrap:wrap;gap:7px}
+  .pod{font-family:var(--mono);font-size:11.5px;background:var(--bg-raise);border:1px solid var(--line);
+    border-radius:7px;padding:5px 8px;color:var(--fg-soft);display:flex;flex-direction:column;gap:2px;line-height:1.3}
+  .pod .svid{font-size:9.5px;letter-spacing:.04em;color:var(--gcp);text-transform:uppercase}
+  .plat .chain{font-family:var(--mono);font-size:11px;color:var(--accent);margin-top:2px}
+  @media (max-width:820px){.plats{grid-template-columns:1fr}}
+
+  .aspanel{border:1px solid color-mix(in srgb,var(--accent) 40%,var(--card-line));border-radius:13px;
+    background:var(--card);padding:20px 22px;box-shadow:0 20px 50px -34px rgba(3,10,25,.6)}
+  .aspanel .kick{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  .aspanel h3{font-size:20px;margin:7px 0 12px}
+  .asrow{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .asrow .step{border-left:2px solid var(--accent);padding:2px 0 2px 12px}
+  .asrow .step b{font-size:14px;font-weight:680;display:block}
+  .asrow .step span{color:var(--fg-soft);font-size:13.5px}
+  .asout{margin-top:14px;padding-top:13px;border-top:1px dashed var(--line);font-size:15px;color:var(--fg-soft);display:flex;gap:10px;align-items:baseline}
+  .asout .ar{color:var(--gcp);font-family:var(--mono)}
+  @media (max-width:680px){.asrow{grid-template-columns:1fr}}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;margin-top:16px;font-family:var(--mono);font-size:11.5px;color:var(--fg-faint)}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .legend .sw{width:22px;height:0;border-top:2px solid var(--fg-faint)}
+  .legend .sw.fed{border-top:2px dashed var(--accent)}
+  .legend .sw.run{border-top:2px solid var(--signal)}
+  .layer-tag{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--fg-faint);margin:0 0 10px 2px}
+  .layer-tag.gold{color:var(--accent);font-weight:700}
+  .danchor{border-width:2px}
+  .danchor-lede{color:var(--fg-soft);font-size:15px;margin:2px 0 14px;max-width:78ch}
+  .domains{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .dom{font-family:var(--mono);font-size:11.5px;padding:5px 10px;border-radius:999px;
+    background:color-mix(in srgb,var(--accent) 10%,var(--card));border:1px solid color-mix(in srgb,var(--accent) 35%,var(--line));color:var(--fg-soft)}
+  .dom b{color:var(--fg);font-weight:600}
+  .plat .scope{font-family:var(--mono);font-size:11px;color:var(--fg-faint);margin-top:2px}
+  /* client registration · federation entity record */
+  .entity{border:1px solid var(--card-line);border-radius:12px;background:var(--card);margin-top:14px;overflow:hidden}
+  .entity .ehd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+    padding:11px 15px;border-bottom:1px dashed var(--line);background:var(--bg-sunk)}
+  .entity .ettl{font-weight:680;font-size:13.5px}
+  .entity .etyp{font-family:var(--mono);font-size:11px;color:var(--fg-faint);white-space:nowrap}
+  .entity .ebody{padding:11px 0;font-family:var(--mono);font-size:12px;line-height:1.7;color:var(--fg-soft);overflow-x:auto}
+  .entity .ln{white-space:pre;padding:0 15px}
+  .entity .ln.add{background:color-mix(in srgb,var(--accent) 12%,transparent);
+    border-left:2px solid var(--accent);padding-left:13px;color:var(--fg)}
+  .entity .k{color:var(--signal)} .entity .cmt{color:var(--fg-faint)}
+  /* PingFederate running inside a platform box */
+  .plat .handoff{font-family:var(--mono);font-size:11px;color:var(--fg-faint);margin-top:1px}
+  .plat .pf{border:1px solid color-mix(in srgb,var(--accent) 42%,var(--card-line));border-radius:9px;
+    background:color-mix(in srgb,var(--accent) 9%,var(--card));padding:10px 11px}
+  .plat .pf .pfhd{font-weight:680;font-size:12.5px;display:flex;align-items:center;gap:6px}
+  .plat .pf .pfhd .lg{color:var(--accent);font-size:10px}
+  .plat .pf .pfstep{font-family:var(--mono);font-size:10.5px;color:var(--fg-soft);margin-top:5px;line-height:1.4}
+  .plat .pf .pfstep .ar{color:var(--accent)}
+
+  /* flow */
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:34px;counter-reset:step}
+  .step-card{position:relative;background:var(--card);border:1px solid var(--card-line);border-radius:13px;padding:18px 16px}
+  .step-card .n{counter-increment:step;font-family:var(--mono);font-size:12px;color:var(--accent);font-weight:700}
+  .step-card .n::before{content:"0" counter(step)}
+  .step-card h3{font-size:16px;margin:7px 0 7px}
+  .step-card p{color:var(--fg-soft);font-size:14px;line-height:1.55}
+  .step-card .where{font-family:var(--mono);font-size:11px;color:var(--fg-faint);margin-top:9px;display:block}
+  @media (max-width:860px){.flow{grid-template-columns:1fr 1fr}}
+  @media (max-width:520px){.flow{grid-template-columns:1fr}}
+
+  /* feature grid */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:32px}
+  .feat{border:1px solid var(--line);border-radius:13px;padding:22px;background:var(--bg-raise)}
+  .feat .kick{font-family:var(--mono);font-size:12px;color:var(--signal);letter-spacing:.05em}
+  .feat h3{font-size:18px;margin:9px 0 8px}
+  .feat p{color:var(--fg-soft);font-size:15px}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+
+  .chips{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+  .chip{font-family:var(--mono);font-size:13px;padding:7px 13px;border-radius:8px;background:var(--bg-raise);border:1px solid var(--line);color:var(--fg-soft)}
+  .chip b{color:var(--fg);font-weight:600}
+
+  footer{padding:32px 0;border-top:1px solid var(--line-soft);color:var(--fg-faint);
+    font-family:var(--mono);font-size:12.5px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Enterprise architecture · multi-cloud workload identity</p>
+    <h1>Every cloud runs its own SPIFFE. <span class="hl">One federation makes them trust each other.</span></h1>
+    <p class="lede">Each platform — EKS, AKS, GKE, bare metal — issues its workloads a SPIFFE identity from its own SPIRE trust domain. PingFederate runs <strong>inside each cloud</strong>: workloads authenticate to its attestation endpoint with their SVID, and it uses the OpenID Federation trust anchor to verify the SPIFFE-ID is registered to a client — the SPIFFE bundle and binding live in that client's federation entity record — before issuing a key-bound client attestation. One federation, honoured across every cloud.</p>
+    <div class="hero-meta">
+      <span class="tag">PingFederate inside every cloud</span>
+      <span class="tag">SPIFFE auth to the attester</span>
+      <span class="tag">registration verified via federation</span>
+    </div>
+  </div>
+</header>
+
+<section>
+  <div class="wrap">
+    <div class="sectlabel"><span class="eyebrow">The architecture</span><span class="bar"></span></div>
+    <h2 class="big">One trust anchor. Many clouds. Portable identity.</h2>
+    <p class="sub">Read it top to bottom: the shared federation where client registrations live, then each cloud's SPIRE — with PingFederate running inside it — attesting workloads against that registration.</p>
+
+    <div class="arch">
+      <div class="layer-tag">① OpenID Federation · the shared trust &amp; registration layer</div>
+      <div class="fedband">
+        <span class="kick">OpenID Federation · trust anchor</span>
+        <h3>Federation Trust Anchor</h3>
+        <div class="anchor">https://federation.acme.example</div>
+        <p>The shared root of trust — and where client registrations live. Each client is a federation entity whose record carries its SPIFFE bundle and its SPIFFE-ID ↔ client-ID bindings.</p>
+      </div>
+
+      <div class="entity">
+        <div class="ehd"><span class="ettl">Client registration</span><span class="etyp">federation entity record · resolved via the trust chain</span></div>
+        <div class="ebody">
+          <div class="ln"><span class="k">"client_id"</span>: "https://payments.acme.example",</div>
+          <div class="ln"><span class="k">"metadata"</span>: { <span class="k">"oauth_client_attestation"</span>: {</div>
+          <div class="ln add">    "spiffe_trust_bundle": { "keys": [ … ] },          <span class="cmt">// the SPIFFE bundle — registered here</span></div>
+          <div class="ln add">    "instances": [                                     <span class="cmt">// binds each SPIFFE ID ↔ this client</span></div>
+          <div class="ln add">      { "spiffe_id": "spiffe://aws.acme.example/payments-agent" },</div>
+          <div class="ln add">      { "spiffe_id": "spiffe://gcp.acme.example/statements-api" } ]</div>
+          <div class="ln">  } }</div>
+        </div>
+      </div>
+
+      <div class="rail"><span class="ar">↑</span> every in-cloud PingFederate resolves this record to verify the SVID's registration <span class="ar">↑</span></div>
+
+      <div class="layer-tag">② SPIFFE / SPIRE per platform — PingFederate runs inside each</div>
+      <div class="plats">
+        <div class="plat aws">
+          <div class="plat-hd"><span class="dotc"></span><span class="cloud">AWS</span><span class="k8s">EKS</span></div>
+          <div class="td">spiffe://aws.acme.example</div>
+          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+          <div class="pods">
+            <span class="pod">payments-agent<span class="svid">JWT-SVID</span></span>
+          </div>
+          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
+          <div class="pf">
+            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+            <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
+            <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
+          </div>
+        </div>
+        <div class="plat az">
+          <div class="plat-hd"><span class="dotc"></span><span class="cloud">Azure</span><span class="k8s">AKS</span></div>
+          <div class="td">spiffe://azure.acme.example</div>
+          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+          <div class="pods">
+            <span class="pod">fraud-scorer<span class="svid">JWT-SVID</span></span>
+          </div>
+          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
+          <div class="pf">
+            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+            <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
+            <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
+          </div>
+        </div>
+        <div class="plat gcp">
+          <div class="plat-hd"><span class="dotc"></span><span class="cloud">Google Cloud</span><span class="k8s">GKE</span></div>
+          <div class="td">spiffe://gcp.acme.example</div>
+          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+          <div class="pods">
+            <span class="pod">statements-api<span class="svid">JWT-SVID</span></span>
+          </div>
+          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
+          <div class="pf">
+            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+            <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
+            <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <span><span class="sw fed"></span> federation resolution — PingFederate → entity record</span>
+        <span><span class="sw run"></span> SVID auth · attestation out (in-cloud)</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sectlabel"><span class="eyebrow">Cross-cloud, end to end</span><span class="bar"></span></div>
+    <h2 class="big">A workload in AWS authenticates to a service in Google Cloud.</h2>
+    <p class="sub">The same journey the diagram implies, followed one hop at a time — the caller never leaves its own cloud's identity, yet the credential travels the whole estate.</p>
+    <div class="flow">
+      <div class="step-card">
+        <span class="n"></span>
+        <h3>Get a local identity</h3>
+        <p>The <span class="mono">payments-agent</span> pod asks its node's SPIRE agent over the Workload API and receives a JWT-SVID. No secret is provisioned to it, ever.</p>
+        <span class="where">AWS · EKS · spiffe://aws.acme.example</span>
+      </div>
+      <div class="step-card">
+        <span class="n"></span>
+        <h3>Authenticate in-cloud</h3>
+        <p>It presents the SVID to PingFederate running inside AWS — the attestation endpoint sits alongside SPIRE. SPIFFE is how the workload authenticates; there is no secret to hold.</p>
+        <span class="where">AWS · PingFederate attestation endpoint</span>
+      </div>
+      <div class="step-card">
+        <span class="n"></span>
+        <h3>Verify registration, then issue</h3>
+        <p>PingFederate resolves the client's federation entity record — the SPIFFE bundle and the spiffe_id ↔ client_id binding — validates the SVID against it, mints a key-bound attestation and issues an access token.</p>
+        <span class="where">PingFederate ↔ OpenID Federation</span>
+      </div>
+      <div class="step-card">
+        <span class="n"></span>
+        <h3>Cross the boundary</h3>
+        <p>It calls <span class="mono">statements-api</span> running in GKE. That service trusts the same federation, so the token is accepted — a different cloud, a different SPIRE, one trust fabric.</p>
+        <span class="where">Google Cloud · GKE</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sectlabel"><span class="eyebrow">Why federation is the spine</span><span class="bar"></span></div>
+    <h2 class="big">Keep each cloud's trust domain isolated. Stitch them with a chain, not a secret.</h2>
+    <div class="grid2">
+      <div class="feat">
+        <span class="kick">independent by design</span>
+        <h3>One SPIRE trust domain per platform</h3>
+        <p>Each cloud runs its own SPIRE with its own trust domain and keys. Nothing is shared across the boundary — a compromise in one cloud doesn't hand an attacker identity in another.</p>
+      </div>
+      <div class="feat">
+        <span class="kick">registered once</span>
+        <h3>The registration lives in the entity record</h3>
+        <p>A client's federation entity record carries its SPIFFE trust bundle and its spiffe_id ↔ client_id bindings in metadata. Any cloud's PingFederate resolves that record via the trust chain — so the bundle it validates the SVID against is federation-vouched, never self-asserted by the workload.</p>
+      </div>
+      <div class="feat">
+        <span class="kick">live control</span>
+        <h3>Membership and revocation are central</h3>
+        <p>Onboard a new platform by adding a subordinate to the federation; retire or revoke one the same way. Trust decisions are governed at the anchor, not scattered across clusters.</p>
+      </div>
+      <div class="feat">
+        <span class="kick">no secret sprawl</span>
+        <h3>Nothing long-lived crosses the boundary</h3>
+        <p>Workloads hold only their own ephemeral keys; the attestation is bound to that key and short by policy. There is no cross-cloud shared secret to distribute, rotate, or leak.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sectlabel"><span class="eyebrow">Standards, end to end</span><span class="bar"></span></div>
+    <h2 class="big">Every layer is an open standard.</h2>
+    <p class="sub">Platform identity, the trust spine, the credential, and its key binding — nothing bespoke, nothing locked in.</p>
+    <div class="chips">
+      <span class="chip"><b>SPIFFE / SPIRE</b> workload identity</span>
+      <span class="chip"><b>SPIFFE</b> JWT-SVID</span>
+      <span class="chip"><b>OpenID Federation 1.0</b> trust chains</span>
+      <span class="chip"><b>OAuth</b> Attestation-Based Client Auth</span>
+      <span class="chip"><b>RFC 7800</b> cnf key binding</span>
+      <span class="chip"><b>RFC 9449</b> DPoP</span>
+      <span class="chip"><b>RFC 9396</b> Rich Authorization Requests</span>
+      <span class="chip"><b>RFC 7638</b> JWK thumbprint</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;width:100%">
+    <span>Multi-cloud attested identity · SPIFFE + OpenID Federation + PingFederate</span>
+    <span>one trust anchor · every platform</span>
+  </div>
+</footer>
+
+</body>
+</html>
