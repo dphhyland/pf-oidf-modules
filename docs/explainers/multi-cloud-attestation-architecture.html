@@ -8,6 +8,7 @@
   :root{
     --ink:#0b1220; --paper:#f4f6fa;
     --seal:#e0a44b; --seal-deep:#c98a30; --signal:#2fb6bd;
+    --spiffe:#6d7c99;
     --aws:#ff9900; --azure:#3b90ff; --gcp:#34a853;
     --bg:var(--paper); --bg-raise:#ffffff; --bg-sunk:#eaeef4;
     --fg:#131a26; --fg-soft:#4a5568; --fg-faint:#77839a;
@@ -139,6 +140,23 @@
   .plat .pf .pfhd .lg{color:var(--accent);font-size:10px}
   .plat .pf .pfstep{font-family:var(--mono);font-size:10.5px;color:var(--fg-soft);margin-top:5px;line-height:1.4}
   .plat .pf .pfstep .ar{color:var(--accent)}
+  /* three-layer key + platform sub-layers (OAuth on top, SPIFFE below) */
+  .layers-key{display:flex;flex-wrap:wrap;gap:12px 22px;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--line-soft)}
+  .lk{display:flex;gap:9px;align-items:flex-start;max-width:33ch}
+  .lk .sq{width:12px;height:12px;border-radius:3px;margin-top:3px;flex:none}
+  .lk b{font-weight:680;font-size:13.5px;display:block;line-height:1.3}
+  .lk span.t{color:var(--fg-soft);font-size:12.5px}
+  .lk.fed .sq{background:var(--accent)} .lk.oauth .sq{background:var(--signal)} .lk.spiffe .sq{background:var(--spiffe)}
+  .plat-oauth{border:1px solid color-mix(in srgb,var(--signal) 45%,var(--card-line));border-radius:9px;
+    background:color-mix(in srgb,var(--signal) 10%,var(--card));padding:10px 11px}
+  .plat-oauth .lyr{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--signal);font-weight:700}
+  .plat-oauth .pfhd{font-weight:680;font-size:12.5px;margin-top:3px}
+  .plat-oauth .pfstep{font-family:var(--mono);font-size:10.5px;color:var(--fg-soft);margin-top:5px;line-height:1.4}
+  .plat-oauth .pfstep .ar{color:var(--signal)}
+  .between{font-family:var(--mono);font-size:10.5px;color:var(--fg-faint);text-align:center;margin:2px 0}
+  .plat-spiffe{border:1px solid var(--card-line);border-left:3px solid var(--spiffe);border-radius:9px;
+    background:var(--bg-sunk);padding:11px;display:flex;flex-direction:column;gap:9px}
+  .plat-spiffe .lyr{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--spiffe);font-weight:700}
 
   /* flow */
   .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:34px;counter-reset:step}
@@ -174,9 +192,9 @@
     <h1>Every cloud runs its own SPIFFE. <span class="hl">One federation makes them trust each other.</span></h1>
     <p class="lede">Each platform — EKS, AKS, GKE, bare metal — issues its workloads a SPIFFE identity from its own SPIRE trust domain. PingFederate runs <strong>inside each cloud</strong>: workloads authenticate to its attestation endpoint with their SVID, and it uses the OpenID Federation trust anchor to verify the SPIFFE-ID is registered to a client — the SPIFFE bundle and binding live in that client's federation entity record — before issuing a key-bound client attestation. One federation, honoured across every cloud.</p>
     <div class="hero-meta">
-      <span class="tag">PingFederate inside every cloud</span>
-      <span class="tag">SPIFFE auth to the attester</span>
-      <span class="tag">registration verified via federation</span>
+      <span class="tag">SPIFFE · workload identity</span>
+      <span class="tag">PingFederate · application identity (client ID)</span>
+      <span class="tag">Federation · cross-domain trust</span>
     </div>
   </div>
 </header>
@@ -188,7 +206,13 @@
     <p class="sub">Read it top to bottom: the shared federation where client registrations live, then each cloud's SPIRE — with PingFederate running inside it — attesting workloads against that registration.</p>
 
     <div class="arch">
-      <div class="layer-tag">① OpenID Federation · the shared trust &amp; registration layer</div>
+      <div class="layers-key">
+        <div class="lk fed"><span class="sq"></span><span><b>Federation</b><span class="t">cross-domain trust &amp; authorization</span></span></div>
+        <div class="lk oauth"><span class="sq"></span><span><b>OAuth · PingFederate</b><span class="t">application identity &amp; authorization (client ID)</span></span></div>
+        <div class="lk spiffe"><span class="sq"></span><span><b>SPIFFE · SPIRE</b><span class="t">workload identity</span></span></div>
+      </div>
+
+      <div class="layer-tag gold">① Federation layer · cross-domain trust &amp; authorization</div>
       <div class="fedband">
         <span class="kick">OpenID Federation · trust anchor</span>
         <h3>Federation Trust Anchor</h3>
@@ -209,57 +233,58 @@
         </div>
       </div>
 
-      <div class="rail"><span class="ar">↑</span> every in-cloud PingFederate resolves this record to verify the SVID's registration <span class="ar">↑</span></div>
+      <div class="rail"><span class="ar">↑</span> the OAuth layer in each cloud resolves this registration from the federation <span class="ar">↑</span></div>
 
-      <div class="layer-tag">② SPIFFE / SPIRE per platform — PingFederate runs inside each</div>
+      <div class="layer-tag">Inside every platform — ② OAuth (PingFederate) sits on top of ③ SPIFFE (SPIRE)</div>
       <div class="plats">
         <div class="plat aws">
           <div class="plat-hd"><span class="dotc"></span><span class="cloud">AWS</span><span class="k8s">EKS</span></div>
-          <div class="td">spiffe://aws.acme.example</div>
-          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
-          <div class="pods">
-            <span class="pod">payments-agent<span class="svid">JWT-SVID</span></span>
-          </div>
-          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
-          <div class="pf">
-            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+          <div class="plat-oauth">
+            <span class="lyr">② OAuth · application identity</span>
+            <div class="pfhd">◆ PingFederate — client ID + authorization</div>
             <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
             <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
+          </div>
+          <div class="between">▲ workload authenticates to PingFederate with its SVID</div>
+          <div class="plat-spiffe">
+            <span class="lyr">③ SPIFFE · workload identity</span>
+            <div class="td">spiffe://aws.acme.example</div>
+            <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+            <div class="pods"><span class="pod">payments-agent<span class="svid">JWT-SVID</span></span></div>
           </div>
         </div>
         <div class="plat az">
           <div class="plat-hd"><span class="dotc"></span><span class="cloud">Azure</span><span class="k8s">AKS</span></div>
-          <div class="td">spiffe://azure.acme.example</div>
-          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
-          <div class="pods">
-            <span class="pod">fraud-scorer<span class="svid">JWT-SVID</span></span>
-          </div>
-          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
-          <div class="pf">
-            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+          <div class="plat-oauth">
+            <span class="lyr">② OAuth · application identity</span>
+            <div class="pfhd">◆ PingFederate — client ID + authorization</div>
             <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
             <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
+          </div>
+          <div class="between">▲ workload authenticates to PingFederate with its SVID</div>
+          <div class="plat-spiffe">
+            <span class="lyr">③ SPIFFE · workload identity</span>
+            <div class="td">spiffe://azure.acme.example</div>
+            <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+            <div class="pods"><span class="pod">fraud-scorer<span class="svid">JWT-SVID</span></span></div>
           </div>
         </div>
         <div class="plat gcp">
           <div class="plat-hd"><span class="dotc"></span><span class="cloud">Google Cloud</span><span class="k8s">GKE</span></div>
-          <div class="td">spiffe://gcp.acme.example</div>
-          <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
-          <div class="pods">
-            <span class="pod">statements-api<span class="svid">JWT-SVID</span></span>
-          </div>
-          <div class="handoff"><span class="ar">↓</span> authenticates with its SVID</div>
-          <div class="pf">
-            <div class="pfhd"><span class="lg">◆</span> PingFederate · attestation endpoint</div>
+          <div class="plat-oauth">
+            <span class="lyr">② OAuth · application identity</span>
+            <div class="pfhd">◆ PingFederate — client ID + authorization</div>
             <div class="pfstep"><span class="ar">↑</span> verify spiffe_id ↔ client_id via the federation</div>
             <div class="pfstep"><span class="ar">→</span> issue the client attestation</div>
           </div>
+          <div class="between">▲ workload authenticates to PingFederate with its SVID</div>
+          <div class="plat-spiffe">
+            <span class="lyr">③ SPIFFE · workload identity</span>
+            <div class="td">spiffe://gcp.acme.example</div>
+            <div class="spire"><b>SPIRE Server</b><span>+ node agents · Workload API</span></div>
+            <div class="pods"><span class="pod">statements-api<span class="svid">JWT-SVID</span></span></div>
+          </div>
         </div>
-      </div>
-
-      <div class="legend">
-        <span><span class="sw fed"></span> federation resolution — PingFederate → entity record</span>
-        <span><span class="sw run"></span> SVID auth · attestation out (in-cloud)</span>
       </div>
     </div>
   </div>
