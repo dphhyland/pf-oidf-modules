@@ -1,0 +1,14 @@
+agent {
+    data_dir           = "/opt/spire/data"
+    log_level          = "INFO"
+    server_address     = "SERVER_ADDR"
+    server_port        = "8081"
+    trust_domain       = "banking.demo"
+    socket_path        = "/tmp/spire-agent/public/api.sock"
+    insecure_bootstrap = true
+}
+plugins {
+    NodeAttestor "join_token" { plugin_data {} }
+    KeyManager "memory" { plugin_data {} }
+    WorkloadAttestor "unix" { plugin_data {} }
+}

@@ -1,0 +1,79 @@
+# SPIFFE → Client Attestation bootstrap — full infrastructure.
+#
+#   spire-server    ─ issues SVIDs, publishes the trust bundle (JWKS) at :8080/jwks.json
+#   spire-bootstrap ─ one-shot: creates the registration entry + a join token (→ shared volume)
+#   spire-agent     ─ join-token attests, exposes the Workload API socket (shared volume)
+#   issuer          ─ hosts the REAL AttestationIssuanceServlet; trusts the spire-server bundle
+#   workload        ─ fetches its JWT-SVID from the agent → bootstraps an attestation → gets a token
+#
+# The bootstrap LOGIC + workload are VERIFIED without Docker via ./run-local.sh (see README §Verified).
+# `docker compose up --build` wires the real SPIRE + servlet + workload together (see README §Compose;
+# the container choreography is the part to shake out on your Docker — I couldn't run it in-sandbox).
+#
+# Real-PingFederate variant: README → "Deploy the servlet into PingFederate".
+name: spiffe-bootstrap
+
+volumes:
+  spire-data:     # server CA + registrations
+  srv-sock:       # spire-server admin socket (server ↔ bootstrap)
+  agent-sock:     # agent Workload API socket (agent ↔ workload)
+  shared:         # the join token
+
+services:
+  spire-server:
+    build: ./spire-server
+    volumes:
+      - spire-data:/opt/spire/data
+      - srv-sock:/tmp/spire-server/private
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  spire-bootstrap:
+    build: ./spire-server
+    depends_on:
+      spire-server: {condition: service_healthy}
+    environment:
+      SPIFFE_ID: spiffe://banking.demo/payment-agent
+      PARENT_ID: spiffe://banking.demo/agent/payment-node
+      SELECTOR: unix:uid:0
+    volumes:
+      - srv-sock:/tmp/spire-server/private   # reach the server's admin socket
+      - shared:/shared                        # write the join token here
+    entrypoint: ["/bin/sh", "/opt/spire/bootstrap.sh"]
+    restart: "no"
+
+  spire-agent:
+    build: ./spire-agent
+    depends_on:
+      spire-bootstrap: {condition: service_completed_successfully}
+    environment:
+      SPIRE_SERVER_ADDRESS: spire-server
+      JOIN_TOKEN_FILE: /shared/join_token     # entrypoint falls back to this when SPIRE_JOIN_TOKEN is unset
+    volumes:
+      - agent-sock:/tmp/spire-agent/public     # publish the Workload API socket
+      - shared:/shared
+
+  issuer:
+    build: ./issuer
+    depends_on:
+      spire-server: {condition: service_healthy}
+    environment:
+      SPIRE_BUNDLE_URL: http://spire-server:8080/jwks.json   # trust the REAL SPIRE bundle
+      SERVE_PORT: "9031"
+    ports: ["9031:9031"]
+
+  workload:
+    build: ./workload
+    depends_on: [issuer, spire-agent]
+    environment:
+      PF_BASE: http://issuer:9031
+      ISSUER_BASE: http://issuer:9031
+      TOKEN_ENDPOINT: http://issuer:9031/as/token.oauth2
+      ATTESTER_ISSUER: https://attester.banking.demo
+      SPIFFE_ID: spiffe://banking.demo/payment-agent
+      SPIRE_AGENT_SOCKET: /tmp/spire-agent/public/api.sock
+    volumes:
+      - agent-sock:/tmp/spire-agent/public     # read the Workload API socket
