@@ -8,6 +8,7 @@ Both are theme-aware (follow the OS light/dark setting via `prefers-color-scheme
 | --- | --- | --- |
 | [hosted-attester-explainer.html](hosted-attester-explainer.html) | Marketing / concept explainer for the hosted attester — the code-to-bearer-token lifecycle, the two trust layers (pluggable instance formats: SPIFFE SVID or wallet WIA; three client sources), an on-the-wire request → enriched response, and the standards used. | [claude.ai artifact](https://claude.ai/code/artifact/59f75e1c-5cb4-4245-989d-63cfe3a46d22) |
 | [multi-cloud-attestation-architecture.html](multi-cloud-attestation-architecture.html) | Enterprise architecture — SPIFFE/SPIRE per cloud (AWS/Azure/GCP), PingFederate running inside each cloud as the attestation endpoint, verifying `spiffe_id ↔ client_id` registration against the client's OpenID Federation entity record before issuing the client attestation. | [claude.ai artifact](https://claude.ai/code/artifact/ef9d0298-7e12-4086-8eb8-371ef3f5783d) |
+| [device-anchored-agent-explainer.html](device-anchored-agent-explainer.html) | Device-anchored agent identity — the three primitives an on-device agent must prove (App Attest, a PingOne passkey, the Secure Enclave key), the nonce-commitment bridge between them, the ceremony, the server-enforced time-box, the CAEP suspension loop, and how to run the `phone-simulator` demo (real HTTP/Postgres/PingOne, one synthetic trust root standing in for a physical iPhone). | [claude.ai artifact](https://claude.ai/code/artifact/aaadee78-48a4-43a2-ab2a-cbef26d6dae9) |
 
 ## Notes
 
