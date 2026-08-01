@@ -82,11 +82,14 @@ public class AttestationIssuanceServlet extends HttpServlet {
     private volatile InstanceAttestationValidators instanceValidators;
     private volatile InstanceKeyProofValidator proofValidator = new InstanceKeyProofValidator();
     private boolean challengeRequired;
+    private volatile List<String> customClaimsRequired = List.of();
 
     @Override
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
         this.challengeRequired = Boolean.parseBoolean(config.getInitParameter("challengeRequired"));
+        this.customClaimsRequired = customClaimsFrom(config.getInitParameter("customClaimsRequired"),
+                "oidf.attestation.custom.claims.required", "OIDF_ATTESTATION_CUSTOM_CLAIMS_REQUIRED");
         String baoUrl = config.getInitParameter("openBaoUrl");
         String baoToken = config.getInitParameter("openBaoToken");
         if (baoUrl != null && baoToken != null) {
@@ -153,6 +156,16 @@ public class AttestationIssuanceServlet extends HttpServlet {
         }
         if (!AttestationSupport.replayCache().firstSeen(request.clientId, proof.jti(), PROOF_REPLAY_TTL_SECONDS)) {
             throw IssuanceException.invalidInstanceProof("proof jti has already been used (replay)");
+        }
+
+        // 4a. Deployment-required custom claims must be present in the proof (advertised as
+        // custom_claims_required in the /.well-known/client-attestation-service metadata). They are
+        // evidence for policy only — never copied into the minted attestation.
+        for (String claim : this.customClaimsRequired) {
+            Object value = proof.claims().get(claim);
+            if (value == null || (value instanceof String && ((String) value).isBlank())) {
+                throw IssuanceException.invalidInstanceProof("proof is missing required claim: " + claim);
+            }
         }
 
         // 4b. If the instance attestation itself binds a key (a WIA cnf), the key being bound must be that
@@ -229,6 +242,10 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     void setChallengeRequired(boolean required) {
         this.challengeRequired = required;
+    }
+
+    void setCustomClaimsRequired(List<String> claims) {
+        this.customClaimsRequired = List.copyOf(claims);
     }
 
     IssuanceClientResolver clientResolver() {
@@ -454,6 +471,26 @@ public class AttestationIssuanceServlet extends HttpServlet {
 
     private static boolean isBlank(String s) {
         return s == null || s.isBlank();
+    }
+
+    /**
+     * A comma-separated claim-name list from a servlet init-param, else the environment (sys-prop /
+     * env var); empty when neither is set. Shared with the discovery metadata servlet so the
+     * advertised {@code custom_claims_required} and the enforced set come from one configuration.
+     */
+    static List<String> customClaimsFrom(String initParam, String sysProp, String envVar) {
+        String csv = (initParam != null && !initParam.isBlank()) ? initParam : env(sysProp, envVar);
+        if (csv == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (String token : csv.split(",")) {
+            String trimmed = token.trim();
+            if (!trimmed.isEmpty()) {
+                out.add(trimmed);
+            }
+        }
+        return List.copyOf(out);
     }
 
     static String env(String sysProp, String envVar) {

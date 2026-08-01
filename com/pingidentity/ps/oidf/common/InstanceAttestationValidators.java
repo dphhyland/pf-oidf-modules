@@ -37,6 +37,11 @@ public final class InstanceAttestationValidators {
         return this.byFormat.containsKey(format);
     }
 
+    /** The registered format identifiers, in registration order (for discovery metadata). */
+    public List<String> formats() {
+        return List.copyOf(this.byFormat.keySet());
+    }
+
     /**
      * Selects the validator for a request.
      *
