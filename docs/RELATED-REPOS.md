@@ -9,6 +9,12 @@
 > **New module/deploy work happens there**; this repo lives on as the demo + harness + ops home.
 > Absorbed repos remain live for links but are backport-only — see the monorepo's
 > `docs/PROVENANCE.md`. The overlap map below is the pre-monorepo picture.
+>
+> **2026-08-08 — no ports pending in either direction:** the monorepo's `main` merged its
+> `device-instance-identity` line (Azure/AKS instance attestation, trust-chain reconciliation) and
+> with it the two backports this repo originated — the SD-JWT attestation-encoding drop and OIDF
+> §12.1 automatic registration (previously only in this repo's gitignored build tree). Its
+> PROVENANCE.md records the merge.
 
 Where `pf-oidf-modules` sits among the other repos on this machine / on GitHub, what overlaps with
 what, and which repo is the source of truth for each piece. Verified against the actual working trees
