@@ -23,12 +23,17 @@ import org.jose4j.json.JsonUtil;
 import org.sourceid.oauth20.issuer.OAuthIssuerUtils;
 
 /**
- * Serves the Client Attestation Service metadata document at {@code /.well-known/client-attestation-service}.
- * A workload (or the tooling that provisions it) reads this to discover the issuance and challenge endpoints
- * and — the heart of the document — the <em>claim contract</em> for minting: which request members are
- * required, which claims the instance-key proof must carry (the default set plus any deployment-required
- * custom claims), and which claims the minted attestation will contain. An authorization server can read
- * the signing-algorithm sets to know what to accept.
+ * Serves the {@code openid-client-attestation-service-1_0} discovery document at
+ * {@code /.well-known/client-attestation-service} (see {@code docs/openid-client-attestation-service-1_0.md}
+ * §5). A workload (or the tooling that provisions it) reads this to discover the issuance and challenge
+ * endpoints and — the heart of the document — the <em>claim contract</em> for minting: which request
+ * members are required, which claims the instance-key proof must carry (the default set plus any
+ * deployment-required custom claims), and which claims the minted attestation will contain. An
+ * authorization server can read the signing-algorithm sets to know what to accept.
+ *
+ * <p>The canonical implementation lives in pf-agentic-identity (reconciled there from this fork's copy);
+ * this copy advertises exactly the formats THIS deployment's issuance endpoint accepts (SPIFFE + opt-in
+ * wallet) — the monorepo's multi-cloud evidence formats are not wired here.
  *
  * <p>The claim lists mirror what {@link AttestationIssuanceServlet} actually enforces: the default proof
  * claims ({@code aud}, {@code jti}, plus {@code challenge} when required) are fixed by the endpoint, while
