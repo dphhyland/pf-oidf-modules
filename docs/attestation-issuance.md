@@ -104,6 +104,30 @@ Per-client **extended properties** (provisioned at registration / admin / Terraf
 | `attestation_issued_ttl` | Lifetime (s) of the minted attestation (default `300`) |
 | `attestation_trust_domain` | Optional: pin the accepted SVID trust domain |
 
+## Discovery — `/.well-known/client-attestation-service`
+
+`ClientAttestationServiceMetadataServlet` serves a JSON metadata document describing the issuance API
+and its **claim contract** (see `docs/openid-client-attestation-service-1_0.md` §5). Base URL comes
+from PF's `OAuthIssuerUtils` (forwarded-header aware). Fields:
+
+- `issuer`, `attestation_endpoint`, `challenge_endpoint` (omit via `challengeEndpointEnabled=false`),
+  `challenge_required` (init-param `challengeRequired`, mirror of the issuance servlet's).
+- `instance_attestation_formats_supported` — dynamic from the registered validators (`spiffe` always,
+  `wallet` when its trust env is configured), via `InstanceAttestationValidators.formats()`.
+- `client_metadata_sources_supported` — `["cimd","registration"]` when `OIDF_CIMD_TRUST_BUNDLES` is
+  set, else `["registration"]`.
+- `attestation_signing_alg_values_supported` (init-param overridable, default RS256/PS256/ES256) and
+  `proof_signing_alg_values_supported` (the validator's permitted set).
+- The claim contract: `request_parameters_required`, `proof_claims_required` (`aud`,`jti`, +
+  `challenge` when required), `attestation_claims_issued` (`iss`,`sub`,`iat`,`exp`,`cnf`,`workload`),
+  `attestation_claims_optional` (`authorization_details`), and `narrowing_behavior: "reject"`.
+- **Custom claims:** `custom_claims_required` / `custom_claims_supported` — from init-params
+  `customClaimsRequired` / `customClaimsSupported` or env `OIDF_ATTESTATION_CUSTOM_CLAIMS_REQUIRED` /
+  `OIDF_ATTESTATION_CUSTOM_CLAIMS_SUPPORTED` (comma-separated). The issuance servlet **enforces** the
+  required list from the same configuration: a proof missing (or blank on) a required custom claim →
+  `invalid_instance_proof`. Custom claims ride as extra Instance Key Proof claims (instance-key-signed)
+  and are policy evidence only — never copied into the minted attestation.
+
 ## Standards
 
 | Component | Standard |
