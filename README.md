@@ -22,28 +22,10 @@ call the token endpoint, and watch PingFederate resolve the client through the t
 |---|---|
 | [`harness/ui/`](harness/ui) | The demo — a stdlib-only Python server (`server.py`) + `index.html`, deployed as `pf-demo-ui`. Points at whatever PingFederate you give it via `PF_BASE` / `TOKEN_ENDPOINT`; does its own crypto in the browser with WebCrypto. See [deploy/README.md](deploy/README.md) for its service vars. |
 | [`harness/probe-challenge.sh`](harness/probe-challenge.sh), [`probe-ssf.sh`](harness/probe-ssf.sh) | Shell contract tests against a **deployed** PingFederate's attestation-challenge and SSF endpoints — `curl` only, no build step. |
-| [`harness/*.java`](harness/README.md) | In-process verification harnesses that compile against the module's own classes. **Currently broken** — see below. |
+| [`harness/README.md`](harness/README.md) | Points at `services/harness/` in pf-agentic-identity — the in-process verification CLIs that used to live here moved there 2026-08-18. |
 | [`demo/spiffe-bootstrap/`](demo/spiffe-bootstrap) | A local SPIRE server/agent + workload rig for the SPIFFE-attestation demo path. |
 | [`docs/`](docs) | Design docs and runbooks — [`REPO-MAP.md`](docs/REPO-MAP.md) inventories what's here, [`RELATED-REPOS.md`](docs/RELATED-REPOS.md) maps the ecosystem. |
 | [`.github/workflows/deploy-demo.yml`](.github/workflows/deploy-demo.yml) | Push `main` → deploys `pf-demo-ui` to **staging**; production is a deliberate `workflow_dispatch` choice. |
-
-## ⚠️ `harness/*.java` needs a decision
-
-`AttestationFlowHarness.java`, `AttestationIssuanceHarness.java`, and `SsfSelfVerify.java` compile
-against the module classes that lived in `com/` — now deleted, since that source is superseded in
-pf-agentic-identity (confirmed file-by-file, 2026-08-15; see the Phase 3 triage in
-[docs/RELATED-REPOS.md](docs/RELATED-REPOS.md)). `harness/run.sh selfverify` cannot work any more: there
-is no `pom.xml`, no `target/pf-oidf-modules-*.jar` to build. Not yet resolved which of these three ways
-to go:
-
-1. **Move them into pf-agentic-identity**, beside the code they exercise — the cleanest end state; this
-   repo would then have no Java at all.
-2. **Repoint them** at pf-agentic-identity's installed jars — keeps a Maven build here, re-creates a
-   version-skew surface (harness built against jar X, deployed PF running Y).
-3. **Delete them** — only if the monorepo's own unit tests are judged to already cover what they proved
-   end-to-end (in-process minting/verifying against the real classes, not mocks).
-
-`harness/probe-challenge.sh` / `probe-ssf.sh` are unaffected — pure HTTP, no build.
 
 ## License
 
