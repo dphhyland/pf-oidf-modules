@@ -1,8 +1,15 @@
 name: Deploy demo (Railway)
 
-# Push-to-deploy for the OIDF demo UI (pf-demo-ui):
-#   push to sd-jwt-rar-paz  -> deploy to STAGING
-#   push to main (via PR)   -> deploy to PRODUCTION
+# Push-to-deploy for the OIDF demo UI (pf-demo-ui) — single-branch model:
+#   push to main            -> deploy to STAGING (automatic)
+#   workflow_dispatch       -> deploy to STAGING or PRODUCTION (choose; production is deliberate)
+#
+# Until 2026-08-15 staging was fed by a long-lived `sd-jwt-rar-paz` branch that sat at the same commit
+# as main and was named after two things that no longer exist (SD-JWT was dropped in 0fe0d28; the
+# RAR→PingAuthorize plugin moved to pf-agentic-identity) — and main auto-deployed PRODUCTION, so an
+# ordinary merge shipped to prod. One branch now, and production is an explicit choice. Same model as
+# pf-agentic-identity, so the two repos behave alike.
+#
 # Only fires when the demo build context changes. The PF services are NOT deployed here at all — since
 # 2026-08-15 pingfederate-runtime / lighthouse / fedhost are deployed from the pf-agentic-identity
 # monorepo (deploy/), which is also where their build contexts and Terraform live. This repo deploys the
@@ -13,19 +20,27 @@ name: Deploy demo (Railway)
 
 on:
   push:
-    branches: [sd-jwt-rar-paz, main]
+    branches: [main]
     paths:
       - "harness/ui/**"
       - ".github/workflows/deploy-demo.yml"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: staging or production
+        type: choice
+        options: [staging, production]
+        default: staging
+        required: true
 
 concurrency:
-  group: deploy-demo-${{ github.ref }}
+  group: deploy-demo-${{ github.ref }}-${{ inputs.environment || 'staging' }}
   cancel-in-progress: true
 
 jobs:
   staging:
-    if: github.ref == 'refs/heads/sd-jwt-rar-paz'
+    # every push to main, plus an explicit dispatch that picks staging
+    if: github.event_name == 'push' || inputs.environment == 'staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +52,8 @@ jobs:
         run: railway up --ci --service pf-demo-ui
 
   production:
-    if: github.ref == 'refs/heads/main'
+    # never automatic — dispatch only, and only when production was chosen
+    if: github.event_name == 'workflow_dispatch' && inputs.environment == 'production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

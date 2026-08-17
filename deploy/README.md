@@ -17,7 +17,13 @@ flows — attestation-based client auth and OpenID Federation §12.1 automatic r
 
 | Service | Context | Workflow |
 |---|---|---|
-| `pf-demo-ui` | [`harness/ui/`](../harness/ui) | [`deploy-demo.yml`](../.github/workflows/deploy-demo.yml) — push-triggered: `sd-jwt-rar-paz`→staging, `main`→production |
+| `pf-demo-ui` | [`harness/ui/`](../harness/ui) | [`deploy-demo.yml`](../.github/workflows/deploy-demo.yml) — push to `main` → **staging**; production by `workflow_dispatch` |
+
+**One branch.** `main` is the only branch; pushing it deploys staging, and production is a deliberate
+`workflow_dispatch` choice. The old `sd-jwt-rar-paz` staging branch was retired on 2026-08-15 — it sat
+at the same commit as `main` and was named for two things that no longer exist (SD-JWT was dropped in
+`0fe0d28`; the RAR→PingAuthorize plugin moved to pf-agentic-identity), while `main` auto-shipped
+production. Same model as pf-agentic-identity now.
 
 Everything else — `pingfederate-runtime`, `lighthouse`/`lighthouse-prod`, `fedhost`/`fedhost-prod`,
 `Redis`, `openbao` — is deployed from **pf-agentic-identity**, including the PF Terraform

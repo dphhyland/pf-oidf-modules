@@ -139,11 +139,12 @@ the trust anchor, the entity host, and the PF Terraform config-as-code (`data.<e
 - Workflow retained here: `deploy-demo.yml` (the demo UI, push-triggered) — see
   [deploy/README.md](../deploy/README.md) for the UI's service vars (note: PF serves the module at the
   ROOT context, so `PF_BASE` carries no `/oidf` prefix).
-- Branch→env: `sd-jwt-rar-paz` → staging, `main` → production. **Level since the 2026-07-22 promotion**
-  (merge `02b5abd`, PR #2): main carries the full SSF transmitter+receiver, attestation issuance, the
-  audit-stream event source, and the SD-JWT removal; the prod services (`pf-demo-ui`, `lighthouse-prod`,
-  `fedhost-prod`) were redeployed from it. The PF runtime itself is not push-deployed (manual workflow).
-  Known skew: staging service `lighthouse` vs prod `lighthouse-prod` (same for fedhost).
+- Branch→env: **one branch.** Push `main` → staging; production is an explicit `workflow_dispatch`
+  choice. The `sd-jwt-rar-paz` staging branch was retired 2026-08-15: it had sat at the same commit as
+  `main` since the 2026-07-22 promotion (merge `02b5abd`, PR #2), was named after a dropped feature
+  (`0fe0d28`) and a plugin that moved to pf-agentic-identity — and the old mapping made an ordinary
+  merge to `main` ship production. Known skew (now in pf-agentic-identity's court): staging service
+  `lighthouse` vs prod `lighthouse-prod`, same for fedhost.
 
 ## Harness
 
