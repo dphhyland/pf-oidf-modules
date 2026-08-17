@@ -1,5 +1,12 @@
 # Design — federation-backed attestation issuance
 
+> **⚠️ SOURCE MOVED AND REDESIGNED (2026-08-15).** The `com/pingidentity/ps/oidf/...` links below no
+> longer resolve. In pf-agentic-identity the federation-backed resolver is `OpenIdFederationClientResolver`
+> — but the `fromEntityMetadata` factory this doc describes is gone: every source (federation, CIMD, PF
+> client metadata) now normalises through the single `AttestationIssuanceConfig.fromProperties()`
+> validation path (`CimdMapping.toConfig()`), rather than two independently-maintained ones. Kept here
+> as the original design rationale.
+
 Sources the hosted attester's per-client config (SPIFFE trust bundle + instance bindings + entitlements)
 from the **client entity's OpenID Federation metadata**, resolved through the trust controller, instead
 of from PingFederate client extended properties. It drops into the existing

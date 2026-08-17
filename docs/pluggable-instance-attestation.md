@@ -1,5 +1,10 @@
 # Design — pluggable instance attestation (SPIFFE, wallets, …)
 
+> **⚠️ SOURCE MOVED (2026-08-15).** The `com/pingidentity/ps/oidf/...` links below no longer resolve —
+> that source now lives in **pf-agentic-identity**'s `servlets/attestation-issuer/`, substantially
+> extended (AWS/Azure/GCP/AKS/EKS/GKE workload-identity validators alongside SPIFFE and wallet). Kept
+> here as the design rationale; for the current code, see the equivalent classes there.
+
 Generalises the hosted attester's **instance-identity layer** from SPIFFE-only into a pluggable format.
 A workload proves *what instance it is* with whatever attestation fits its runtime — an infrastructure
 workload a **SPIFFE JWT-SVID**, a digital wallet a **Wallet Instance Attestation (WIA)** issued by its

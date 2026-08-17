@@ -1,5 +1,10 @@
 # Stand up PingFederate (OIDF attestation module) on Railway — runbook
 
+> **⚠️ SUPERSEDED (2026-08-15).** The `deploy/pingfederate/` context this runbook builds no longer
+> exists in this repo — it moved to **pf-agentic-identity**'s `deploy/pingfederate/`, built from that
+> repo's modular jars (`mvn package` + `build/stage-modules.sh`), and is what staging actually runs.
+> See [../deploy/README.md](../deploy/README.md). Kept here as historical record of the original setup.
+
 Reproduces the live staging instance: **PingFederate 13.0.3 + the `pf-oidf-modules` attestation module +
 a pre-trusted mock attester**, deployed to Railway as a Docker image, exposed via a **TCP proxy**, with the
 **demo UI** pointed at it. Written for a fresh session on **this machine** (`/Users/davidhyland/Source/pf-oidf-modules`).
