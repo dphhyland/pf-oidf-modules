@@ -1164,7 +1164,9 @@ async function buildArtifacts(){
   if(mode()==='pop'){
     proofHeaderName='OAuth-Client-Attestation-PoP';
     proofHeader={alg:'ES256', typ:'oauth-client-attestation-pop+jwt', kid:'instance-1'};
-    proofPayload={iss:CLIENT_ID, aud:CFG.token_endpoint, jti, iat:now};
+    // aud must match what PF itself accepts — behind a TLS-terminating proxy that's the
+    // http:// base (PF_TOKEN_AUD), like every other flow on this page. token_endpoint is the fallback.
+    proofPayload={iss:CLIENT_ID, aud:(CFG.token_aud||CFG.token_endpoint), jti, iat:now};
   } else {
     proofHeaderName='DPoP';
     proofHeader={alg:'ES256', typ:'dpop+jwt', jwk:cnfJwk};
