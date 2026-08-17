@@ -158,6 +158,7 @@ core `pf-runtime.war` (a different context from the module's `oidf.war`), so the
 ```
 
 The **build-in-CI** deploy applies this automatically: `deploy/pingfederate/build/assemble-pf-runtime-war.sh`
+(in **pf-agentic-identity**, where the PF deploy context now lives)
 injects the module jar into `pf-runtime.war`'s `WEB-INF/lib` **and** this filter mapping into its `web.xml`
 (idempotent, existing filters preserved). The alternative loose-jar `Dockerfile` deploy (stock `pf-runtime.war`
 + `deploy/*.jar`) does not reassemble the runtime war, so it would need to adopt the assembled war to pick up

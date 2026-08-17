@@ -1,6 +1,14 @@
 # pf-oidf-modules
 
-> **📦 Module code has moved:** the canonical home of the modules described below (federation, client-attestation authenticator + issuer, SSF, RAR→PingAuthorize, GM API) is now the [**pf-agentic-identity** monorepo](https://github.com/dphhyland/pf-agentic-identity) — one `mvn package` builds everything. **This repo lives on as the demo + harness + ops home** (demo UI, deploy history, docs). See [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md) for the full map.
+> **📦 Module code AND service deploys have moved:** the canonical home of the modules described below
+> (federation, client-attestation authenticator + issuer, SSF, RAR→PingAuthorize, GM API) is the
+> [**pf-agentic-identity** monorepo](https://github.com/dphhyland/pf-agentic-identity) — one `mvn package`
+> builds everything — and since 2026-08-15 so is every Railway **service deploy** (`pingfederate-runtime`,
+> `lighthouse`, `fedhost` + the PF Terraform), verified end to end on staging from the monorepo's own
+> build. **This repo lives on as the demo + harness home**: the demo UI (`harness/ui` → `pf-demo-ui`,
+> still deployed from here by `deploy-demo.yml`), the probes and self-verify harnesses, and the docs.
+> The module source below is retained as historical reference — read it, don't build on it.
+> See [deploy/README.md](deploy/README.md) and [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md).
 
 
 PingFederate add-on modules implementing **OpenID Federation** (trust anchor / intermediate /

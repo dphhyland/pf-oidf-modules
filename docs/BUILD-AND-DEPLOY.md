@@ -128,8 +128,8 @@ not auto-deployed.**
 > The full challenge flow needs the module merged into `pf-runtime.war`.
 >
 > **Since resolved, two ways:** the merged-war deploy
-> (`deploy/pingfederate/build/assemble-pf-runtime-war.sh` injects the module into
-> `pf-runtime.war` — single classloader), and the **Redis-backed** challenge +
+> (`deploy/pingfederate/build/assemble-pf-runtime-war.sh` **in pf-agentic-identity** injects the
+> module into `pf-runtime.war` — single classloader), and the **Redis-backed** challenge +
 > `jti` replay stores (`RedisAttestationStore`, `REDIS_URL`), which share state
 > across classloaders *and* cluster nodes.
 

@@ -3,9 +3,10 @@ name: Deploy demo (Railway)
 # Push-to-deploy for the OIDF demo UI (pf-demo-ui):
 #   push to sd-jwt-rar-paz  -> deploy to STAGING
 #   push to main (via PR)   -> deploy to PRODUCTION
-# Only fires when the demo build context changes. The PF services are NOT deployed here — their build
-# context needs secrets (overlay/, *.lic, jars, data.zip) that aren't in git; deploy those with a local
-# `railway up` (see deploy/pingfederate/). Requires two repo secrets, each a Railway PROJECT token scoped
+# Only fires when the demo build context changes. The PF services are NOT deployed here at all — since
+# 2026-08-15 pingfederate-runtime / lighthouse / fedhost are deployed from the pf-agentic-identity
+# monorepo (deploy/), which is also where their build contexts and Terraform live. This repo deploys the
+# demo UI and nothing else. Requires two repo secrets, each a Railway PROJECT token scoped
 # to the matching environment of project e02a8e2f:
 #   RAILWAY_TOKEN_STAGING   (staging)
 #   RAILWAY_TOKEN_PROD      (production)

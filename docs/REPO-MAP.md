@@ -28,11 +28,11 @@ The five capabilities:
 | `com/` | The **tracked source tree** (clean-room classes only — see "Source conventions"). |
 | `src/test/java` | The tracked test tree (45 test classes). |
 | `src/main/java` | **Gitignored build mirror**, copied from `com/` at build time (plus the CFR-decompiled files and two authored mirror-only classes — see below). |
-| `deploy/` | Config-as-code deploy context per Railway service: `pingfederate/` (the AS + Terraform), `lighthouse/` (trust anchor), `fedhost/` (static federation entity host). |
+| `deploy/` | **Pointer only** — the per-service deploy contexts (`pingfederate/` + Terraform, `lighthouse/`, `fedhost/`) moved to **pf-agentic-identity** on 2026-08-15. See [deploy/README.md](../deploy/README.md). |
 | `docs/` | Per-feature design docs and runbooks (index below). |
 | `harness/` | Verification tooling: in-process self-verify harnesses, live probes, the demo UI (`ui/` = the deployed `pf-demo-ui`), and a SPIFFE-attested `agent-workload/` service. |
 | `pf-rar-paz-plugin/` | Separate Maven module — the RAR→PingAuthorize PF SDK plugin. |
-| `.github/workflows/` | Four Railway push-to-deploy workflows (below). |
+| `.github/workflows/` | One Railway push-to-deploy workflow — `deploy-demo.yml` (the demo UI). The three service workflows moved with their contexts (below). |
 | `build-tools/` | ⚠️ Referenced by `pom.xml` (assembly descriptor, PMD/Checkstyle configs) but **not present** — hence `mvn package -Dassembly.skipAssembly=true -Dpmd.skip=true -Dcheckstyle.skip=true`. |
 
 ## Source conventions (important)
@@ -129,17 +129,16 @@ unmanaged part of `data.zip`.
 
 ## Deploy, CI, Terraform
 
-- `deploy/pingfederate/` — the AS image (PF 13.0.3 + this module merged into `pf-runtime.war`,
-  OIDF-only `data.zip` via drop-in-deployer, DEV mock attester, **DevOps-fetched licensing** — no baked
-  `.lic`). `vars.{staging,production}.env` carry non-secret env config incl. the `OIDF_SSF_*` transmitter
-  settings. `terraform/` is the **config-as-code source for the running PF config** (adopts live prod via
-  `import{}`; the OIDF federation gate criterion is authored in `access-token-mappings.tf`; flow =
-  apply → export configArchive → commit `data.zip`).
-- `deploy/lighthouse/` — the OpenID Federation trust anchor (`oidfed/lighthouse`, digest-pinned).
-- `deploy/fedhost/` — static federation entity host (pre-signed statements, per-env content).
-- Workflows: `deploy-demo.yml` (UI, push-triggered), `deploy-fedhost.yml`, `deploy-lighthouse.yml`
-  (push-triggered per path), `deploy-pingfederate.yml` (**manual scaffold** — build-in-CI from the
-  private `pf-integration` carve-out; secrets not yet provisioned).
+**Service deploys moved to pf-agentic-identity (2026-08-15).** `deploy/{pingfederate,lighthouse,fedhost}`
+and their workflows were deleted here — both repos held deployable definitions for the *same* Railway
+services and had already diverged, so either could silently undo the other. The monorepo builds the
+module code PF actually runs, so the deploy definition lives beside it; it is verified end to end on
+staging (attestation flow + §12.1 automatic registration both issue tokens). Look there for the AS image,
+the trust anchor, the entity host, and the PF Terraform config-as-code (`data.<env>.zip` is now per-env).
+
+- Workflow retained here: `deploy-demo.yml` (the demo UI, push-triggered) — see
+  [deploy/README.md](../deploy/README.md) for the UI's service vars (note: PF serves the module at the
+  ROOT context, so `PF_BASE` carries no `/oidf` prefix).
 - Branch→env: `sd-jwt-rar-paz` → staging, `main` → production. **Level since the 2026-07-22 promotion**
   (merge `02b5abd`, PR #2): main carries the full SSF transmitter+receiver, attestation issuance, the
   audit-stream event source, and the SD-JWT removal; the prod services (`pf-demo-ui`, `lighthouse-prod`,

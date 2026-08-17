@@ -11,8 +11,9 @@ is **issuance only**: the AS-side verification / client-authentication path is u
 `AttestationIssuanceServlet` → `POST /federation/attestation`.
 
 **See it / ship it:** the demo's **③ Attestation minting** tab walks the whole flow (SVID → mint → decode)
-with an inline-JWK vs OpenBao-transit toggle (`harness/ui/`). To deploy against a live PF, follow
-[../deploy/pingfederate/DEMO-MINT-DEPLOY.md](../deploy/pingfederate/DEMO-MINT-DEPLOY.md).
+with an inline-JWK vs OpenBao-transit toggle (`harness/ui/`). To deploy against a live PF, follow `deploy/pingfederate/DEMO-MINT-DEPLOY.md`
+in **pf-agentic-identity** (the PF deploy context moved there 2026-08-15 — see
+[../deploy/README.md](../deploy/README.md)).
 
 ## Roles (three keys, not one)
 

@@ -6,7 +6,13 @@
 > `pf-integration`), the standalone `pf-rar-paz-plugin`, `idp-gm-api`, and this repo's tracked
 > attestation-issuer + SSF sources and `deploy/` IaC tree (its `deploy-*` workflows moved too;
 > `deploy-demo.yml` stays here). One `mvn package` there builds oidf.war + all plugin jars + gm-api.war.
-> **New module/deploy work happens there**; this repo lives on as the demo + harness + ops home.
+> **New module/deploy work happens there**; this repo lives on as the demo + harness home.
+>
+> **2026-08-15 — the deploy split finished.** `deploy/{pingfederate,lighthouse,fedhost}` and their three
+> workflows are now DELETED here, not merely superseded: the monorepo's own build (modular jars, staged
+> by `deploy/pingfederate/build/stage-modules.sh`) was verified end to end on staging — the attestation
+> flow and OpenID Federation §12.1 automatic registration both issue tokens — so it is the single
+> deployer for those services. The "two repos can deploy the same service" hazard below is closed.
 > Absorbed repos remain live for links but are backport-only — see the monorepo's
 > `docs/PROVENANCE.md`. The overlap map below is the pre-monorepo picture.
 >
@@ -96,7 +102,8 @@ the CDR/FAPI/MATTR/AuthZen repos — no shared `com.pingidentity.ps.oidf` code o
 1. **Same-named classes in the carve-outs** — a fix landed here won't reach `oidf.war` built from
    `pf-integration` (and vice versa) unless ported. The CI build-in-CI scaffold builds from the
    carve-out, while local deploys build from this repo: **two build paths for the "same" module.**
-2. **Two PF deploy contexts** — this repo's `deploy/pingfederate/` (OIDF-only, minus-RAR) vs
+2. **Two PF deploy contexts** *(this repo's half is now GONE — see the 2026-08-15 note at the top;
+   the OIDF-only context lives in pf-agentic-identity)* — this repo's `deploy/pingfederate/` (OIDF-only, minus-RAR) vs
    `idp-paz-authzen-adapter/demo/pingfederate/` (agentic, what prod runs). They share artifact names
    but not content; the agentic context has also drifted ahead of live prod (adds
    `urn:agent:northwind-autonomous:v1`, RAR plugin jar, MFA kit).
