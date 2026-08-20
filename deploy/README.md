@@ -49,7 +49,7 @@ GitHub secrets; `vars.*.env` holds only non-secret config.
 | `pingfederate-runtime` | the AS — PF 13.0.3 + the capability repo's modules | [`pingfederate/`](pingfederate) + `deploy-pingfederate.yml`. **Gated**: the config archive is compromised; see that README |
 | `pf-demo-ui` | the attestation demo page | [`../harness/ui/`](../harness/ui) + `deploy-demo.yml` |
 | `agent-workload` | SPIFFE-attested demo agent | [`../harness/agent-workload/`](../harness/agent-workload) — **migrating to `idp-agentic-demo`**, whose banking trust domain it already defaults to |
-| `railway-workload` | workload-identity demo | **source not located** — find it before touching the service, or retire it |
+| `railway-workload` | workload-identity demo | [`pf-agentic-identity-domain-authority`](https://github.com/dphhyland/pf-agentic-identity-domain-authority) `gke-spiffe-demo/railway-workload/` — deployed by hand from there, so that repo is a **third** deployer into this project |
 | `Redis` / `Redis-3siA` | challenge/replay store (`OIDF_REDIS_URL`) | managed Railway resource, no deploy dir |
 | `openbao` / `openbao-prod` | secrets vault | dormant. Nothing references its transit key, its public key is trusted nowhere, traffic is zero, and `openbao-prod` has never had a serving deployment. **Deletion recommended.** |
 | `webhook-console` | — | no deployment, ever |
