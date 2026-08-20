@@ -1,10 +1,21 @@
-# Secrets — NEVER commit. Stage locally before `railway up`.
+# Secrets — NEVER commit. Staged locally (or by CI) before the context is composed.
+#   overlay/         pf.jwk + pingfederate-system-keys.xml matching data.zip
+#   *.lic            PingFederate licenses
 overlay/
 *.lic
 
-# Build outputs / config artifact — staged into the context, not versioned here.
-#   *.war, *.jar         <- `mvn -q package` outputs of this repo
-#   data.zip             <- terraform/ Phase-2 configArchive export (encrypted, but large)
+# The composed build context — assembled by compose-context.sh from this directory plus
+# pf-agentic-identity's build/pingfederate/. Entirely derived; never versioned.
+.context/
+
+# Build outputs and the config artifact.
+#   *.war, *.jar   <- module jars, built in pf-agentic-identity and staged in
+#   data*.zip      <- terraform/ Phase-2 configArchive export. The pattern is data*.zip, not
+#                     data.zip: a PF configArchive is a PLAIN ZIP that CONTAINS pf.jwk, the system
+#                     keys, both keystores, the admin password hash and master-key-reversible client
+#                     secrets. The note that used to sit here called it "encrypted, but large" and
+#                     the narrow data.zip pattern let data.staging.zip through to a public remote.
+#                     It is a secret, not a large artifact.
 *.war
 *.jar
-data.zip
+data*.zip

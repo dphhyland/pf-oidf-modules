@@ -1,61 +1,70 @@
-# Environment as one solution — git-managed, CI-deployed
+# The environment, as code
 
-An **environment** (staging or production) is the *whole* set of services that make the demo work,
-not just the UI. Historically only `pf-demo-ui` was git-managed + CI-deployed; every other service
-was `railway up`'d by hand from throwaway `/tmp` contexts, with its config living only in Railway's
-console. That drift is what let a one-line lighthouse var change turn into an outage with no git
-source of truth to revert to. This tree fixes that: **every service is defined here, config is code,
-and CI deploys the environment per branch.**
+An **environment** (staging or production) is the whole set of services that make the demo work, not
+just the UI. Historically only the demo UI was git-managed; every other service was `railway up`'d by
+hand from throwaway `/tmp` contexts with its config living only in Railway's console. That drift is
+what let a one-line lighthouse variable change turn into an outage with no git source of truth to
+revert to. This tree fixes that: **every service is defined here, and config is code.**
 
-## The pattern (every service follows it)
+This repo is the sole deployer of Railway project `pingfederate` (`e02a8e2f`).
+
+## The two repos
+
+`pf-agentic-identity` is the **capability** — the Java modules, plugins and servlets, plus the PF
+image build (`build/pingfederate/`) that packages them. It deploys nothing and owns no Railway.
+This repo is the **demo**: it owns the project, the per-service config, the tokens, and the
+deployments.
+
+Between 2026-08-15 and 2026-08-21 the deploy trees lived in the capability repo instead. That was the
+wrong way round, and the Actions history is unambiguous about it: here, `deploy-fedhost` and
+`deploy-lighthouse` ran green on 2026-07-22 and `deploy-demo` on 2026-08-17; there, with no Railway
+tokens, the workflows died at the first CLI call and `deploy-pingfederate` was never dispatched once.
+The move took a working pipeline and made it theatre, and left two repos able to deploy the same
+services. They are back.
+
+## The pattern
 
 ```
 deploy/<service>/
   Dockerfile           # or build context — pinned by digest where it's an upstream image
   railway.json         # builder + deploy policy
-  vars.staging.env      # non-secret config as code (KEY=value)
+  vars.staging.env     # non-secret config as code (KEY=value)
   vars.production.env
 ```
 
-- **CI** — `.github/workflows/deploy-<service>.yml`, path-filtered to `deploy/<service>/**`, applies
-  `vars.<env>.env` then `railway up`s. Branch→env: `sd-jwt-rar-paz`→staging, `main`→production
-  (level since the 2026-07-22 promotion merge — staging and production content match until they diverge again)
-  (same mapping as `deploy-demo.yml`). Tokens: repo secrets `RAILWAY_TOKEN_STAGING` / `_PROD`.
-- **Secrets never live in git.** Master keys, licenses, vault tokens, DB creds → Railway/GitHub
-  secrets, referenced by name. `vars.*.env` holds only non-secret config.
-- **Reproducible.** A fresh environment = deploy each `deploy/<service>/` context + apply its vars.
-  Persistent state (volumes: the lighthouse anchor key, PF's store) are pre-existing Railway
-  resources — created once per env, never rebuilt from git.
+CI is `.github/workflows/deploy-<service>.yml`, path-filtered to `deploy/<service>/**`, applying
+`vars.<env>.env` via `railway variables --set` and then `railway up`. **Push to `main` → staging;
+production only by explicit `workflow_dispatch`** — no branch deploys production. Tokens are the repo
+secrets `RAILWAY_TOKEN_STAGING` / `RAILWAY_TOKEN_PROD`, one Railway *project* token per environment.
 
-## Service inventory & migration status
+**Secrets never live in git.** Master keys, licenses, vault tokens and DB credentials are Railway or
+GitHub secrets; `vars.*.env` holds only non-secret config.
 
-| Service | Purpose | Status |
+## Service inventory — project `e02a8e2f`
+
+| Service | Purpose | Deployed from |
 |---|---|---|
-| `pf-demo-ui` | demo UI | ✅ CI (`deploy-demo.yml`) — pre-existing |
-| **`lighthouse`** | trust anchor / resolver (go-oidfed) | ✅ **migrated** — `deploy/lighthouse/` + `deploy-lighthouse.yml` |
-| **`fedhost`** | serves entity configs (public JWTs) | ✅ **migrated** — `deploy/fedhost/` + `deploy-fedhost.yml`; per-env content via `FEDHOST_CONTENT` (content.{staging,production}.json) |
-| `pingfederate-runtime` | the AS (PF 13 + module) | 🟡 **scaffolded, unverified** — `deploy-pingfederate.yml` (build-in-CI) + `build/assemble-pf-runtime-war.sh`. Needs provisioning first (below) |
-| `Redis` | challenge/replay store | managed DB — provisioned, `OIDF_REDIS_URL` referenced |
-| `openbao` | secrets vault | dormant, deferred (has secrets) |
-| `agent-workload` | SPIFFE demo workload | `harness/agent-workload/` (SDK vendored, gitignored) |
+| `lighthouse` / `lighthouse-prod` | trust anchor / resolver (go-oidfed, pinned by digest) | [`lighthouse/`](lighthouse) + `deploy-lighthouse.yml` |
+| `fedhost` / `fedhost-prod` | serves entity configurations (public JWTs); per-env content via `FEDHOST_CONTENT` | [`fedhost/`](fedhost) + `deploy-fedhost.yml` |
+| `pingfederate-runtime` | the AS — PF 13.0.3 + the capability repo's modules | [`pingfederate/`](pingfederate) + `deploy-pingfederate.yml`. **Gated**: the config archive is compromised; see that README |
+| `pf-demo-ui` | the attestation demo page | [`../harness/ui/`](../harness/ui) + `deploy-demo.yml` |
+| `agent-workload` | SPIFFE-attested demo agent | [`../harness/agent-workload/`](../harness/agent-workload) — **migrating to `idp-agentic-demo`**, whose banking trust domain it already defaults to |
+| `railway-workload` | workload-identity demo | **source not located** — find it before touching the service, or retire it |
+| `Redis` / `Redis-3siA` | challenge/replay store (`OIDF_REDIS_URL`) | managed Railway resource, no deploy dir |
+| `openbao` / `openbao-prod` | secrets vault | dormant. Nothing references its transit key, its public key is trusted nowhere, traffic is zero, and `openbao-prod` has never had a serving deployment. **Deletion recommended.** |
+| `webhook-console` | — | no deployment, ever |
 
-## PingFederate — to go live (the one part that needs you)
+Persistent state — the lighthouse volume (anchor key + subordinate DB) and the Redis instances — are
+pre-existing Railway resources, created once per environment and never rebuilt from git. PF itself is
+ephemeral: its config is the archive baked into the image, which is why an undeployed config change
+survives only until the next restart.
 
-The pipeline (`deploy-pingfederate.yml`, currently `workflow_dispatch`-only) builds the module from the
-private carve-out and assembles `pf-runtime.war` reproducibly in CI. The licensed `pf-protocolengine`
-jar + stock war are extracted from the `pingidentity/pingfederate` image the deploy already builds FROM
-(no separate jar host). What's yours to provision, then flip `on:` to the push trigger:
-- **Repo Actions secrets:** `PF_INTEGRATION_DEPLOY_KEY` (read deploy key for the private carve-out),
-  `PF_JWK`, `PF_SYSTEM_KEYS`, `PF_LICENSE`.
-- **Commit the safe artifacts** into `deploy/pingfederate/`: `data.staging.zip` / `data.production.zip`
-  (PF config archive, encrypted with `pf.jwk` → safe to version), plus `oidf-mock-attesters.json`,
-  `overlay/` (minus secrets), `template/`.
-- **Confirm two image paths** on the first run (marked in the workflow): where `pf-protocolengine*.jar`
-  and the stock `pf-runtime.war` live inside the PF image.
+## Known cleanups
 
-## Known cleanups (tracked here so they aren't lost)
-- **Service-name skew:** staging is `lighthouse`, production is `lighthouse-prod` (the CLI couldn't add
-  a same-named service to a second env). The CI carries per-env names; unify by renaming so both envs
-  use one service name.
-- **Image pinning:** the lighthouse is pinned by digest on purpose — an unpinned `:latest` is what
-  drifted and broke staging. Bump the digest deliberately, in git, not by re-pulling.
+- **Service-name skew:** staging is `lighthouse`, production is `lighthouse-prod` (the CLI could not
+  add a same-named service to a second environment). CI carries per-env names; unify by renaming so
+  both environments use one name.
+- **Image pinning:** the lighthouse is pinned by digest deliberately — an unpinned `:latest` caused a
+  past outage.
+- **No health checks** on `fedhost` or `lighthouse`; PF has a 600 s timeout with no path, so it is a
+  no-op on the slowest-booting service.

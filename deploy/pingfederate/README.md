@@ -1,46 +1,51 @@
-# OIDF PingFederate — isolated deploy context
+# `pingfederate-runtime` — the deployment
 
-The **own** deploy context for `pingfederate-runtime` (Railway project `e02a8e2f`) — PF 13.0.3 + the
-`pf-oidf-modules` attestation/federation module **only**. It replaces building from the *shared*
-`idp-paz-authzen-adapter/demo/pingfederate/`, so no agentic `urn:agent:*` clients or RFC 8693
-token-exchange plane ride along.
+The Railway deployment of the OIDF/attestation AS (project `e02a8e2f`, services
+`pingfederate-runtime` in both environments). **This directory does not contain the image build.**
 
-- **[`Dockerfile`](Dockerfile)** — the minus-RAR image: drops the RAR→PingAuthorize plugin, the RAR
-  consent page, and the PingAuthorize-TLS workaround; **merges `pf-oidf-modules.jar` + jose4j into
-  `pf-runtime.war`** (root context, single classloader) with the SSF logout filter registered in its
-  `web.xml`, keeps the mock-attester + master-key overlay, and bakes this repo's **own** `data.zip`.
-  Because the module is at root, its endpoints have **no `/oidf` prefix** (e.g. the challenge endpoint is
-  `/federation/attestation-challenge`, `/.well-known/ssf-configuration` is at root) — repoint any `/oidf/*`
-  consumers (demo UI `PF_BASE`) accordingly.
-- **[`terraform/`](terraform/)** — the config-as-code source (the federation issuance criterion) + the
-  Phase-2 runbook that produces the OIDF-only `data.zip`.
+| Half | Where it lives | Why |
+|---|---|---|
+| The image build — `Dockerfile`, `assemble-pf-runtime-war.sh`, `stage-modules.sh`, the config-store overlay | [`pf-agentic-identity`](https://github.com/dphhyland/pf-agentic-identity) `build/pingfederate/` | three repos consume it, and `pf-agentic-identity-domain-authority` pushes the image to **ECR** — it is not a Railway artefact |
+| The deployment — `railway.json`, `vars.<env>.env`, `.railwayignore`, `terraform/`, the archive and its keys, the demo attester trust | here | this repo owns project `e02a8e2f` and holds the tokens |
 
-## Stage the build context, then deploy
+`railway up` needs both in one directory, so [`compose-context.sh`](compose-context.sh) joins them into
+`.context/` (git-ignored, entirely derived — delete it freely).
 
-The Dockerfile `COPY`s these — place them here first (git-ignored; `.railwayignore` still uploads them):
-
-| Artifact | Source |
-|---|---|
-| `pf-oidf-modules.jar` | `mvn -q package` in this repo (merged into `pf-runtime.war` at build) |
-| `jose4j-0.9.6.jar` | module runtime dep (merged into `pf-runtime.war`) |
-| `oidf-mock-attesters.json` | DEV attester trust (issuer → public JWK) |
-| `overlay/` | **secret** — master key from `idp-paz-authzen-adapter/demo/pingfederate/` (git-ignored) |
-| `data.zip` | `terraform/` Phase-2 export (OIDF-only configArchive) |
-
-> **Licensing is DevOps-fetched — no `pingfederate.lic` is baked or staged.** The image sets
-> `PING_IDENTITY_ACCEPT_EULA=YES`; the base image's boot hook pulls a fresh evaluation license when
-> `PING_IDENTITY_DEVOPS_USER` + `PING_IDENTITY_DEVOPS_KEY` are present as **Railway service vars**
-> (already set on `pingfederate-runtime`) / **GitHub Actions secrets** (applied by the deploy workflow).
-> Non-secret licensing config lives in `vars.<env>.env`. Trade-off: DevOps eval licenses are short-lived
-> (~7 days) and re-fetched only at container start.
+## Deploying by hand
 
 ```sh
-# from repo root, after staging the artifacts above and running terraform Phase 2:
-( cd deploy/pingfederate && railway up --detach -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -s pingfederate-runtime -e staging )
+# once: clone the capability repo beside this one, or set PF_AGENTIC_IDENTITY_HOME
+#   Source/pf-agentic-identity/
+#   Source/pf-oidf-modules/          <- you are here
+
+./deploy/pingfederate/compose-context.sh      # builds + stages the modules if needed
+( cd deploy/pingfederate/.context && railway up --detach --no-gitignore \
+    -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -s pingfederate-runtime -e staging )
 ```
 
-Then verify: the demo ⚡ flow still issues a token (enrol → resolve → 200), and the admin console
-(`https://hayabusa.proxy.rlwy.net:39267/pingfederate/app`) shows only OIDF clients — no `urn:agent:*`.
+`--no-gitignore` is not optional: `.context/` is git-ignored in full, and without the flag
+`railway up` uploads nothing and the Docker build fails on its first `COPY`.
 
-> Until you cut over, `pingfederate-runtime` keeps building from the shared context. This context becomes
-> authoritative the first time you `railway up` from here (Step 6 of `terraform/README.md`).
+## What you must stage here first (all git-ignored)
+
+| Path | What it is |
+|---|---|
+| `data.zip` | the configArchive for the environment you are deploying. **A configArchive is a plain zip that contains `pf.jwk`** — the master key that decrypts every secret in it. It is a secret; never commit one. `terraform/helpers/export-data-zip.sh` writes the per-env `data.<env>.zip`. |
+| `overlay/pf.jwk`, `overlay/pingfederate-system-keys.xml` | the key and system keys matching that archive |
+
+> **The current key is compromised.** `data.staging.zip` was committed to a public remote under the
+> belief that "encrypted with `pf.jwk`" made it safe. Kid `GsG6aqYBaO` is treated as dead, CI refuses
+> to deploy rather than re-bake it, and the replacement is an `age`-encrypted archive decrypted at
+> boot from a sealed Railway variable — so the key sits in neither git nor an image layer.
+
+## CI
+
+[`deploy-pingfederate.yml`](../../.github/workflows/deploy-pingfederate.yml) — `workflow_dispatch`
+only, per-environment, gated on the archive above (it fails deliberately, before writing any key
+material, rather than deploying from a committed one). It checks out `pf-agentic-identity`, builds the
+reactor there, stages the modules, composes the context and `railway up`s it.
+
+Because the modules are merged into `pf-runtime.war` at the **root** context, their endpoints have no
+`/oidf` prefix — the challenge endpoint is `/federation/attestation-challenge` and
+`/.well-known/ssf-configuration` is at root. Repoint any `/oidf/*` consumer (the demo UI's `PF_BASE`)
+accordingly.
