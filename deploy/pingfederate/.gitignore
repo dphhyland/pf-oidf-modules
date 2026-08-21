@@ -19,3 +19,10 @@ overlay/
 *.war
 *.jar
 data*.zip
+
+# age IDENTITIES (the secret half). The public recipients in age-recipients/*.txt are committed on
+# purpose; the identity that decrypts the archive never is. Named broadly because an identity file
+# can be called anything - build.yml also greps content for AGE-SECRET-KEY, which is the real check.
+identity*.txt
+*identity.txt
+*.age-identity
