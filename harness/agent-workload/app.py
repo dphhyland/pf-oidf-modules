@@ -1,7 +1,7 @@
 """A real agent workload. On boot it attests itself via the SPIFFE agent (SPIRE Workload API
 analogue) and obtains a JWT-SVID; remotely invoke POST /invoke to run the token exchange — build the
 SPIFFE-attested Client Attestation and present it to PingFederate. Uses the client_attestation_sdk."""
-import json, os, time, urllib.parse, urllib.request, urllib.error
+import json, os, ssl, time, urllib.parse, urllib.request, urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from client_attestation_sdk.keys import SigningKeyPair
@@ -56,8 +56,11 @@ def token_exchange():
         "Content-Type": "application/x-www-form-urlencoded",
         "OAuth-Client-Attestation": attestation, "OAuth-Client-Attestation-PoP": pop})
     status, body = 0, ""
+    # PF sits behind a TCP proxy with its self-signed cert (the aud/TLS-passthrough setup) — same
+    # unverified context the demo UI's proxy uses.
+    ctx = ssl._create_unverified_context()
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as r:
             status, body = r.status, r.read().decode()
     except urllib.error.HTTPError as e:
         status, body = e.code, e.read().decode()

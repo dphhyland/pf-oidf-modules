@@ -426,7 +426,7 @@
       member conforms to a profile (e.g. <code>region-emea</code>, <code>workload-inspection</code>). It counts only if its
       <b>issuer is one the anchor recognises</b> for that type <b>and</b> it validates (signature, expiry, status). So the AS
       can gate not just on "is it in the federation" but "does it hold these attestations."</p>
-      <p class="hint"><b>In this demo:</b> the go-oidfed <b>lighthouse</b> is the Trust Anchor + resolver; a <b>fedhost</b>
+      <p class="hint"><b>In this demo:</b> the <b>OpenID Federation Trust Controller</b> is the Trust Anchor + resolver; a <b>fedhost</b>
       serves each entity's self-signed configuration; the client presents/resolves its chain at the token endpoint and the AS
       re-derives it to the anchor <b>live</b>. <b>Revocation</b> = the anchor deletes the leaf's Subordinate Statement → the
       chain no longer resolves → the very next token fails. That is the ⑤&nbsp;Revoke step in the Deployment tab.</p>
@@ -650,7 +650,7 @@
           <text class="zlabel" x="242" y="108">TIER 1 · AGENT TYPE — registered once</text>
           <text class="zlabel" x="758" y="108">TIER 2 · AGENT INSTANCE — per deployment</text>
           <g class="node active"><rect x="360" y="18" width="280" height="56" rx="8"/>
-            <text class="t1" x="500" y="42">TRUST ANCHOR — Lighthouse</text>
+            <text class="t1" x="500" y="42">TRUST ANCHOR — Trust Controller</text>
             <text class="t2" x="500" y="60">the federation root of trust</text></g>
           <g class="node active"><rect x="340" y="356" width="320" height="58" rx="8"/>
             <text class="t1" x="500" y="380">PINGFEDERATE — the AS (verifier)</text>
@@ -665,10 +665,10 @@
             <text class="t2" x="758" y="196">instance key · local, never leaves the instance</text>
             <text class="t2" x="758" y="214">carries cnf = its own public key</text>
             <text class="t2" x="758" y="232">signs the PoP — proof of possession</text></g>
-          <g class="edge active"><path class="flow" d="M440,74 C360,96 320,118 268,148" marker-end="url(#ahc)"/><text class="lbl" x="474" y="98">① register · subordinate statement</text></g>
-          <g class="edge active"><path class="flow" d="M408,190 L592,190" marker-end="url(#ahc)"/><text class="lbl" x="500" y="180">② Client Attestation JWT</text><text class="lbl" x="500" y="266">entity-signed · binds cnf = instance key</text></g>
-          <g class="edge active"><path class="flow" d="M712,248 C672,304 612,334 566,354" marker-end="url(#ahc)"/><text class="lbl" x="702" y="300">③ attestation + PoP</text><text class="lbl" x="702" y="314">(PoP is instance-signed)</text></g>
-          <g class="edge active"><path class="flow dash" d="M418,368 C176,332 176,112 360,56" marker-end="url(#ahc)"/><text class="lbl" x="250" y="300">④ resolve attester key</text><text class="lbl" x="250" y="314">↑ the trust chain</text></g>
+          <g class="edge active"><path class="flow" d="M424,74 C380,96 330,120 276,146" marker-end="url(#ahc)"/><text class="lbl" x="510" y="90">① register · subordinate statement</text></g>
+          <g class="edge active"><path class="flow" d="M408,190 L592,190" marker-end="url(#ahc)"/><text class="lbl" x="500" y="178">② Client Attestation JWT</text><text class="lbl" x="500" y="266">entity-signed · binds cnf = instance key</text></g>
+          <g class="edge active"><path class="flow" d="M700,248 C680,300 636,334 570,354" marker-end="url(#ahc)"/><text class="lbl" x="790" y="300">③ attestation + PoP</text><text class="lbl" x="790" y="314">(PoP is instance-signed)</text></g>
+          <g class="edge active"><path class="flow dash" d="M340,385 L60,385 Q36,385 36,361 L36,70 Q36,46 60,46 L352,46" marker-end="url(#ahc)"/><text class="lbl" x="150" y="322">④ resolve attester key</text><text class="lbl" x="150" y="336">↑ the trust chain</text></g>
         </svg>
         <div class="cap">① The anchor vouches for the <b>type</b> — an anchor-signed subordinate statement binds
           <code>entity_id → entity key</code>. ② The type <b>attests each instance</b>: a Client Attestation JWT signed by the
