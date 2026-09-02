@@ -72,7 +72,7 @@ export TF_VAR_pf_admin_host='https://<that environment's pingfederate-runtime ad
 the old default was a public admin proxy, now deleted). Open one per environment:
 
 ```sh
-railway ssh config -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -s pingfederate-runtime -e staging --alias pf-staging-admin
+railway ssh config -p 2a226db6-e288-4194-9e91-f56491290761 -s pingfederate-runtime -e staging --alias pf-staging-admin
 ssh -N -L 19999:127.0.0.1:9999 pf-staging-admin      # production: 29999, -e production
 export TF_VAR_pf_admin_host='https://localhost:19999'
 ```
@@ -161,13 +161,13 @@ ephemeral service would boot the old archive, so don't leave Step 5 undone.
 
 ## Step 6 — restore the demo UI's `PF_TOKEN_AUD`
 
-`pf-demo-ui` (Railway project `e02a8e2f-ff38-4043-836f-25d9e1c0f26b`) sends `PF_TOKEN_AUD` as the `aud` of
+`pf-demo-ui` (Railway project `2a226db6-e288-4194-9e91-f56491290761`) sends `PF_TOKEN_AUD` as the `aud` of
 its `private_key_jwt`. Staging is currently pinned to the ELB **as a workaround for the stale base URL**;
 once Step 3b shows the runtime URL as issuer, PF accepts the runtime token endpoint as `aud` and the
 workaround must go — otherwise the assertion's `aud` no longer matches PF's issuer and token calls fail:
 
 ```sh
-railway variables -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -e staging -s pf-demo-ui \
+railway variables -p 2a226db6-e288-4194-9e91-f56491290761 -e staging -s pf-demo-ui \
   --set "PF_TOKEN_AUD=https://pingfederate-runtime-staging.up.railway.app/as/token.oauth2"
 ```
 (Same for production with `-e production` and the `…-production.up.railway.app` token endpoint. Use the

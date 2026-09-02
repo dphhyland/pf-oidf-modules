@@ -252,7 +252,7 @@ federation to exercise. Inject it via `setClientResolver` until that wiring land
 
 ## Not in this design (Phase 2)
 
-- **`spiffe_id → entity_id` reverse resolution** for SVID-only requests — a genuinely new Lighthouse
+- **`spiffe_id → entity_id` reverse resolution** for SVID-only requests — a genuinely new trust-controller
   surface (index entities by their published `instances`, or a registry), plus the first-request
   bootstrapping. Only needed if the workload must *not* carry its `entity_id`.
 - **AS-side verification** of these federation-minted attestations (the `FederationAttesterKeyResolver`

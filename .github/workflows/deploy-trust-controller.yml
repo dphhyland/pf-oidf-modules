@@ -1,19 +1,19 @@
-# Push-to-deploy for the OpenID Federation trust anchor (go-oidfed lighthouse), config-as-code.
-# Fires only when deploy/lighthouse/** changes. Applies vars.<env>.env, then `railway up`s the
+# Push-to-deploy for the OpenID Federation Trust Controller (trust anchor / resolver; go-oidfed's "lighthouse" implementation), config-as-code.
+# Fires only when deploy/trust-controller/** changes. Applies vars.<env>.env, then `railway up`s the
 # pinned image. Monorepo mapping: push to main → STAGING; production only via workflow_dispatch (explicit).
 # Requires the two project tokens already in repo secrets (RAILWAY_TOKEN_STAGING / _PROD).
 #
-# NOTE the service-name skew this inherits: the staging service is `lighthouse`, the production
-# service is `lighthouse-prod` (the CLI could not add a same-named service to a second env). The
+# NOTE the service-name skew this inherits: the staging service is `trust-controller`, the production
+# service is `trust-controller-prod` (the CLI could not add a same-named service to a second env). The
 # per-env jobs below carry the right name; unifying the names is a tracked follow-up in deploy/README.md.
-name: Deploy lighthouse (trust anchor)
+name: Deploy trust controller (OpenID Federation)
 
 on:
   push:
     branches: [main]
     paths:
-      - deploy/lighthouse/**
-      - .github/workflows/deploy-lighthouse.yml
+      - deploy/trust-controller/**
+      - .github/workflows/deploy-trust-controller.yml
   workflow_dispatch:
     inputs:
       environment:
@@ -28,7 +28,7 @@ permissions:
 # two in-flight uploads can land in either order, so the service can end up running the older one.
 # Not cancel-in-progress - a half-finished deploy is worse than a queued one.
 concurrency:
-  group: deploy-lighthouse-${{ github.event.inputs.environment || 'staging' }}
+  group: deploy-trust-controller-${{ github.event.inputs.environment || 'staging' }}
   cancel-in-progress: false
 
 jobs:
@@ -38,14 +38,14 @@ jobs:
     # A real GitHub Environment, not the dispatch input of the same name: this is what scopes
     # RAILWAY_TOKEN_* to the environment and what protection rules attach to.
     environment: staging
-    defaults: { run: { working-directory: deploy/lighthouse } }
+    defaults: { run: { working-directory: deploy/trust-controller } }
     steps:
       - uses: actions/checkout@v7
       - run: npm i -g @railway/cli@5.41.2
-      - name: apply config + deploy → lighthouse (staging)
+      - name: apply config + deploy → trust-controller (staging)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
-          SERVICE: lighthouse
+          SERVICE: trust-controller
           VARS: vars.staging.env
         run: |
           setargs=(); while IFS= read -r l; do [[ "$l" =~ ^[[:space:]]*# || -z "${l// }" ]] && continue; setargs+=(--set "$l"); done < "$VARS"
@@ -58,14 +58,14 @@ jobs:
     # Attach required reviewers to this environment in repo settings and production deploys stop
     # being one dispatch click by anyone with write access.
     environment: production
-    defaults: { run: { working-directory: deploy/lighthouse } }
+    defaults: { run: { working-directory: deploy/trust-controller } }
     steps:
       - uses: actions/checkout@v7
       - run: npm i -g @railway/cli@5.41.2
-      - name: apply config + deploy → lighthouse-prod (production)
+      - name: apply config + deploy → trust-controller-prod (production)
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PROD }}
-          SERVICE: lighthouse-prod
+          SERVICE: trust-controller-prod
           VARS: vars.production.env
         run: |
           setargs=(); while IFS= read -r l; do [[ "$l" =~ ^[[:space:]]*# || -z "${l// }" ]] && continue; setargs+=(--set "$l"); done < "$VARS"

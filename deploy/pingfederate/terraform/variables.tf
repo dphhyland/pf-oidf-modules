@@ -76,7 +76,7 @@ locals {
 variable "trust_anchor" {
   description = "OIDF trust anchor / controller base URL the trust-chain validator resolves against"
   type        = string
-  default     = "https://lighthouse-staging-e017.up.railway.app"
+  default     = "https://trust-controller-staging.up.railway.app"
 }
 
 # The OGNL hook classes from the pf-oidf-modules jar that the token-endpoint issuance criterion calls.

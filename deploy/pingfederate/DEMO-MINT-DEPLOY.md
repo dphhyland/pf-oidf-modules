@@ -14,7 +14,7 @@ What has to happen, and why:
 > **Fast path (inline toggle only):** do Steps 0, 3, 4, 5, 6 and skip Step 2 (OpenBao). The inline signer
 > needs no vault. Add Step 2 later for the OpenBao toggle.
 
-Railway: project `e02a8e2f-ff38-4043-836f-25d9e1c0f26b`, env `staging`, services `pingfederate-runtime`
+Railway: project `2a226db6-e288-4194-9e91-f56491290761`, env `staging`, services `pingfederate-runtime`
 (id `413fdf8a-…`) and `openbao` (id `78ad0f83-…`). Branch `sd-jwt-rar-paz` → staging.
 
 ---
@@ -125,7 +125,7 @@ Config-as-code flow: apply to the running PF, then export `data.zip` (the deploy
 cd deploy/pingfederate/terraform
 export TF_VAR_pf_admin_password='<staging admin password>'   # out-of-band; never commit
 export PINGFEDERATE_PROVIDER_PRODUCT_VERSION=13.0
-railway ssh config -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -s pingfederate-runtime -e staging --alias pf-staging-admin
+railway ssh config -p 2a226db6-e288-4194-9e91-f56491290761 -s pingfederate-runtime -e staging --alias pf-staging-admin
 ssh -N -L 19999:127.0.0.1:9999 pf-staging-admin      # production: 29999, -e production
 export TF_VAR_pf_admin_host='https://localhost:19999'
 
@@ -157,7 +157,7 @@ Stage the build context (see `README.md` "Stage the build context"), then:
 ```sh
 cp target/pf-oidf-modules-0.0.1-SNAPSHOT.jar deploy/pingfederate/pf-oidf-modules.jar
 # also present in deploy/pingfederate/: jose4j-0.9.6.jar, oidf-mock-attesters.json, overlay/ (secret), data.zip
-( cd deploy/pingfederate && railway up --detach -p e02a8e2f-ff38-4043-836f-25d9e1c0f26b -s pingfederate-runtime -e staging )
+( cd deploy/pingfederate && railway up --detach -p 2a226db6-e288-4194-9e91-f56491290761 -s pingfederate-runtime -e staging )
 ```
 
 ## Step 5 — verify the servlet is live

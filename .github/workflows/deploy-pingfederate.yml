@@ -118,7 +118,7 @@ jobs:
         env:
           RAILWAY_TOKEN: ${{ inputs.environment == 'production' && secrets.RAILWAY_TOKEN_PROD || secrets.RAILWAY_TOKEN_STAGING }}
           VARS: vars.${{ inputs.environment }}.env
-        # Same shape as deploy-lighthouse/fedhost, which this workflow alone was missing. Without it
+        # Same shape as deploy-trust-controller/fedhost, which this workflow alone was missing. Without it
         # vars.<env>.env was documentation: it recorded what a service SHOULD have while the service
         # drifted freely, which is how five coordinates in this project came to point at hosts torn
         # down weeks earlier - and why OIDF_ATTESTATION_REQUIRE_BRIDGE_KEY sat in the file while the

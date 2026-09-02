@@ -22,7 +22,7 @@ State as recorded 2026-08-15 unless noted.
 
 ## 1. Staging environment
 
-**What it shows.** The platform running: `lighthouse` (go-oidfed trust anchor / resolver),
+**What it shows.** The platform running: `trust-controller` (the OpenID Federation Trust Controller — trust anchor / resolver),
 `fedhost` (static federation entity host — the `as-emea` / `as-partner` / `as-external` /
 `as-unknown` entities the demo UI resolves against), and `pingfederate-runtime` (PF 13.0.3 with the
 reactor's modular jars merged into `pf-runtime.war` at root context). Railway project
@@ -30,11 +30,11 @@ reactor's modular jars merged into `pf-runtime.war` at root context). Railway pr
 
 | Service | Host | Defined by |
 |---|---|---|
-| lighthouse | `https://lighthouse-staging-e017.up.railway.app` | `deploy/lighthouse/` |
+| trust-controller | `https://trust-controller-staging.up.railway.app` | `deploy/trust-controller/` |
 | fedhost | `https://fedhost-staging.up.railway.app` (entities under `/e/<name>/.well-known/openid-federation`) | `deploy/fedhost/` |
 | pingfederate-runtime | `https://pingfederate-runtime-staging.up.railway.app` (Railway HTTPS edge → PF's HTTP listener 9080); admin console/API only via the service's TCP proxy — address and credentials in the Railway service variables, not here | `deploy/pingfederate/` |
 
-**How a change deploys.** Push to `main` touching `deploy/lighthouse/**` or `deploy/fedhost/**`
+**How a change deploys.** Push to `main` touching `deploy/trust-controller/**` or `deploy/fedhost/**`
 runs the matching workflow's staging job (applies `vars.staging.env`, `railway up`). Production is a
 `workflow_dispatch` with `environment=production`. PF is `workflow_dispatch`-only and gated on the
 per-env `data.<env>.zip` archives (see [deploy/README.md](../deploy/README.md)); today it is deployed
@@ -70,7 +70,7 @@ environment and the PF base URL (`server-settings.tf`).
 **Verify:**
 
 ```sh
-curl -s https://lighthouse-staging-e017.up.railway.app/.well-known/openid-federation | cut -d. -f2 | tr '_-' '/+' | jq -R '@base64d | fromjson | .iss'
+curl -s https://trust-controller-staging.up.railway.app/.well-known/openid-federation | cut -d. -f2 | tr '_-' '/+' | jq -R '@base64d | fromjson | .iss'
 curl -s https://pingfederate-runtime-staging.up.railway.app/.well-known/openid-configuration | jq -r .issuer
 curl -s https://pingfederate-runtime-staging.up.railway.app/.well-known/openid-federation | cut -d. -f2 | tr '_-' '/+' | jq -R '@base64d | fromjson | .iss'
 ```
@@ -89,7 +89,7 @@ must send that ELB as the `private_key_jwt` `aud` (`PF_TOKEN_AUD` on the demo UI
 **What it shows.** [pf-oidf-modules](https://github.com/dphhyland/pf-oidf-modules) `harness/ui/` — a
 browser UI (stdlib Python proxy + WebCrypto in the page; no private key touches the server) that
 drives a live PF through the whole attestation client-auth flow: keys → challenge → Client
-Attestation + PoP/DPoP → token endpoint, plus federation resolution against lighthouse/fedhost,
+Attestation + PoP/DPoP → token endpoint, plus federation resolution against the trust controller/fedhost,
 §12.1/§12.2 registration, the hosted-attester minting tab, and remote invocation of a SPIFFE-attested
 `agent-workload`. Deployed as `pf-demo-ui`: `https://pf-demo-ui-staging.up.railway.app` /
 `https://pf-demo-ui-production.up.railway.app` (both live).
@@ -108,7 +108,7 @@ PF_BASE=https://pingfederate-runtime-staging.up.railway.app python3 harness/ui/s
 
 `PF_BASE` is the PF **root** — the modules are merged into `pf-runtime.war`, so there is no `/oidf`
 prefix (the script's default `https://localhost:19031/oidf` is the old loose-war local layout).
-`LIGHTHOUSE` / `FEDHOST` default to the staging hosts; `PF_TOKEN_AUD` must equal what PF advertises
+`TRUST_CONTROLLER` / `FEDHOST` default to the staging hosts; `PF_TOKEN_AUD` must equal what PF advertises
 as issuer + `/as/token.oauth2` (see the note in §1); the two demo clients (`demo-attest-inline`,
 `demo-attest-vault`) come from `deploy/pingfederate/terraform/attestation-demo-clients.tf` here.
 

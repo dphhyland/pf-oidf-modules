@@ -8,7 +8,7 @@
 > `deploy-demo.yml` stays here). One `mvn package` there builds oidf.war + all plugin jars + gm-api.war.
 > **New module/deploy work happens there**; this repo lives on as the demo + harness home.
 >
-> **2026-08-15 — the deploy split finished.** `deploy/{pingfederate,lighthouse,fedhost}` and their three
+> **2026-08-15 — the deploy split finished.** `deploy/{pingfederate,trust-controller,fedhost}` and their three
 > workflows are now DELETED here, not merely superseded: the monorepo's own build (modular jars, staged
 > by `deploy/pingfederate/build/stage-modules.sh`) was verified end to end on staging — the attestation
 > flow and OpenID Federation §12.1 automatic registration both issue tokens — so it is the single

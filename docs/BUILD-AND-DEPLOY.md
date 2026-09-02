@@ -245,7 +245,7 @@ Verified working **locally and on Railway**.
    challenge/replay stores are Redis-backed; the `OIDF_NO_CHALLENGE` bypass is
    gone.
 2. **Real federation trust** — **done**: the live demo federation under the
-   Lighthouse trust anchor exercises the
+   OpenID Federation Trust Controller exercises the
    `FederationAttesterKeyResolver` / `TrustChainValidator` path with distributed
    `/resolve` (the static mock attester remains a DEV convenience).
 3. **Clustering** — challenge/replay state is now shared via Redis

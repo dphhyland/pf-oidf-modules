@@ -4,7 +4,7 @@
 > here (federation, client-attestation authenticator + issuer, SSF, RAR→PingAuthorize, GM API) is the
 > [**pf-agentic-identity** monorepo](https://github.com/dphhyland/pf-agentic-identity) — one `mvn package`
 > builds everything — and since 2026-08-15 so is every Railway **service deploy** (`pingfederate-runtime`,
-> `lighthouse`, `fedhost` + the PF Terraform), verified end to end on staging from the monorepo's own
+> `trust-controller`, `fedhost` + the PF Terraform), verified end to end on staging from the monorepo's own
 > build (both demo flows below issue a token against it). **This repo is now the demo + harness home
 > only**: no Java, no Maven, no PingFederate module source. See [deploy/README.md](deploy/README.md) and
 > [docs/RELATED-REPOS.md](docs/RELATED-REPOS.md) for how the two repos relate.

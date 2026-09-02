@@ -28,7 +28,7 @@ The five capabilities:
 | `com/` | The **tracked source tree** (clean-room classes only — see "Source conventions"). |
 | `src/test/java` | The tracked test tree (45 test classes). |
 | `src/main/java` | **Gitignored build mirror**, copied from `com/` at build time (plus the CFR-decompiled files and two authored mirror-only classes — see below). |
-| `deploy/` | **Pointer only** — the per-service deploy contexts (`pingfederate/` + Terraform, `lighthouse/`, `fedhost/`) moved to **pf-agentic-identity** on 2026-08-15. See [deploy/README.md](../deploy/README.md). |
+| `deploy/` | **Pointer only** — the per-service deploy contexts (`pingfederate/` + Terraform, `trust-controller/`, `fedhost/`) moved to **pf-agentic-identity** on 2026-08-15. See [deploy/README.md](../deploy/README.md). |
 | `docs/` | Per-feature design docs and runbooks (index below). |
 | `harness/` | Verification tooling: in-process self-verify harnesses, live probes, the demo UI (`ui/` = the deployed `pf-demo-ui`), and a SPIFFE-attested `agent-workload/` service. |
 | `pf-rar-paz-plugin/` | Separate Maven module — the RAR→PingAuthorize PF SDK plugin. |
@@ -129,7 +129,7 @@ unmanaged part of `data.zip`.
 
 ## Deploy, CI, Terraform
 
-**Service deploys moved to pf-agentic-identity (2026-08-15).** `deploy/{pingfederate,lighthouse,fedhost}`
+**Service deploys moved to pf-agentic-identity (2026-08-15).** `deploy/{pingfederate,trust-controller,fedhost}`
 and their workflows were deleted here — both repos held deployable definitions for the *same* Railway
 services and had already diverged, so either could silently undo the other. The monorepo builds the
 module code PF actually runs, so the deploy definition lives beside it; it is verified end to end on
@@ -144,7 +144,7 @@ the trust anchor, the entity host, and the PF Terraform config-as-code (`data.<e
   `main` since the 2026-07-22 promotion (merge `02b5abd`, PR #2), was named after a dropped feature
   (`0fe0d28`) and a plugin that moved to pf-agentic-identity — and the old mapping made an ordinary
   merge to `main` ship production. Known skew (now in pf-agentic-identity's court): staging service
-  `lighthouse` vs prod `lighthouse-prod`, same for fedhost.
+  `trust-controller` vs prod `trust-controller-prod`, same for fedhost.
 
 ## Harness
 

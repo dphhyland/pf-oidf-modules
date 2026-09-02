@@ -1,4 +1,5 @@
-# OpenID Federation trust anchor / resolver (go-oidfed "lighthouse").
+# OpenID Federation Trust Controller — trust anchor / resolver (go-oidfed's "lighthouse" implementation,
+# hence the LH_ env prefix and the image name below).
 #
 # Pinned by DIGEST, deliberately. An unpinned `:latest` is exactly what drifted and broke
 # staging (a newer image began REQUIRING storage/signing config the old one defaulted). This
