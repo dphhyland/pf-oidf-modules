@@ -38,6 +38,31 @@ The Railway deployment of the OIDF/attestation AS (project `2a226db6`, services
 > to deploy rather than re-bake it, and the replacement is an `age`-encrypted archive decrypted at
 > boot from a sealed Railway variable — so the key sits in neither git nor an image layer.
 
+## The trust anchor's keys are pinned, not fetched
+
+Since 2026-09-15 the capability refuses to validate any OpenID Federation trust chain unless it has the
+anchor's public keys in `OIDF_FEDERATION_TRUST_ANCHOR_JWKS` (OpenID Federation 1.0 §4 distributes them
+out of band). Before that it read them from the anchor's `/.well-known/openid-federation` on every
+walk, so whoever answered HTTPS at the anchor's hostname was the anchor.
+
+| Environment | Anchor | Pinned |
+|---|---|---|
+| staging | `trust-controller-staging` | yes, in `vars.staging.env` — kid `icyaNxdj6OHG9lSMPMQm6CuXP1Wf2e4aGT09V_qjDS8`, captured over HTTPS; still to be confirmed against `/data/keys` on its volume |
+| production | `trust-controller-prod` | **no** — it returned 404 when this was done, so production PF validates no chain until it is set |
+
+Capture or refresh with the capability repo's tool, then compare the printed thumbprint with the key the
+anchor holds before deploying:
+
+```sh
+../pf-agentic-identity/tools/pin-trust-anchor.py https://trust-controller-staging.up.railway.app \
+  --env-file deploy/pingfederate/vars.staging.env
+```
+
+A missing value does not stop PF booting: this war also serves PF's own federation endpoints, so the
+filters log an error at startup and refuse per request instead. A value that is set but malformed does
+stop it. On an anchor key rollover, pin the new key alongside the old and deploy *before* the anchor
+starts signing with it.
+
 ## CI
 
 [`deploy-pingfederate.yml`](../../.github/workflows/deploy-pingfederate.yml) — `workflow_dispatch`

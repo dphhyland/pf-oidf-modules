@@ -125,9 +125,11 @@ format).
 The servlet's default registry is SPIFFE-always plus an opt-in wallet validator, whose wallet-provider
 trust comes from the first source configured:
 
-1. **Federation** (preferred) — set `OIDF_TRUST_CONTROLLER_HOST` (the trust anchor / controller base URL)
-   and `OIDF_ATTESTER_OP_ISSUER` (the hosted attester's own federation entity id, the relying party in the
-   WIA trust chain). The servlet builds `TrustChainValidator` → `HttpTrustControllerGateway` (exactly the
+1. **Federation** (preferred) — set `OIDF_TRUST_CONTROLLER_HOST` (the trust anchor / controller base URL),
+   `OIDF_TRUST_ANCHOR_JWKS` (that anchor's public keys, pinned out of band — capture with the capability
+   repo's `tools/pin-trust-anchor.py`; since 2026-09-15 a host without it refuses wallet trust rather than
+   fetching the keys or falling back to the static map) and `OIDF_ATTESTER_OP_ISSUER` (the hosted
+   attester's own federation entity id, the relying party in the WIA trust chain). The servlet builds `TrustChainValidator` → `HttpTrustControllerGateway` (exactly the
    AS-side attester wiring in `ClientAttestationUtils.getValidator`) →
    [`FederationWalletProviderKeyResolver`](../com/pingidentity/ps/oidf/common/FederationWalletProviderKeyResolver.java),
    which validates a chain from the WIA's `iss` (the wallet provider) up to the anchor and reads its
