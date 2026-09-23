@@ -6,7 +6,14 @@ hand from throwaway `/tmp` contexts with its config living only in Railway's con
 what let a one-line trust-controller variable change turn into an outage with no git source of truth to
 revert to. This tree fixes that: **every service is defined here, and config is code.**
 
-This repo is the sole deployer of Railway project `pingfederate` (`2a226db6`).
+This repo is the sole deployer of Railway project `pingfederate` (`dfb3922e`).
+
+That id has now changed twice. The project has been deleted and rebuilt from this tree three
+times (`e02a8e2f`, then `2a226db6`, now `dfb3922e`), which is the strongest argument this README
+has for why config lives here and not in Railway's console: the console copy does not survive.
+What did not survive the last rebuild was the state Railway holds and git cannot - the trust
+controller's volume (its anchor signing key and subordinate DB) and the Redis instance - so a
+rebuild always costs a federation re-mint. `fedhost/remint.mjs` is that step, written down.
 
 ## The two repos
 
@@ -40,7 +47,7 @@ secrets `RAILWAY_TOKEN_STAGING` / `RAILWAY_TOKEN_PROD`, one Railway *project* to
 **Secrets never live in git.** Master keys, licenses, vault tokens and DB credentials are Railway or
 GitHub secrets; `vars.*.env` holds only non-secret config.
 
-## Service inventory — project `2a226db6`
+## Service inventory — project `dfb3922e`
 
 | Service | Purpose | Deployed from |
 |---|---|---|
@@ -49,10 +56,10 @@ GitHub secrets; `vars.*.env` holds only non-secret config.
 | `pingfederate-runtime` | the AS — PF 13.0.3 + the capability repo's modules | [`pingfederate/`](pingfederate) + `deploy-pingfederate.yml`. **Gated**: the config archive is compromised; see that README |
 | `pf-demo-ui` | the attestation demo page | [`../harness/ui/`](../harness/ui) + `deploy-demo.yml` |
 | `agent-workload` | SPIFFE-attested demo agent | [`../harness/agent-workload/`](../harness/agent-workload) — **migrating to `idp-agentic-demo`**, whose banking trust domain it already defaults to |
-| `railway-workload` | workload-identity demo | [`pf-agentic-identity-domain-authority`](https://github.com/dphhyland/pf-agentic-identity-domain-authority) `gke-spiffe-demo/railway-workload/` — deployed by hand from there, so that repo is a **third** deployer into this project |
-| `Redis` / `Redis-3siA` | challenge/replay store (`OIDF_REDIS_URL`) | managed Railway resource, no deploy dir |
-| `openbao` / `openbao-prod` | secrets vault | dormant. Nothing references its transit key, its public key is trusted nowhere, traffic is zero, and `openbao-prod` has never had a serving deployment. **Deletion recommended.** |
-| `webhook-console` | — | no deployment, ever |
+| `railway-workload` | workload-identity demo | [`pf-agentic-identity-domain-authority`](https://github.com/dphhyland/pf-agentic-identity-domain-authority) `gke-spiffe-demo/railway-workload/` — deployed by hand from there, so that repo is a **third** deployer into this project. **Not yet restored in `dfb3922e`.** |
+| `Redis` | challenge/replay store (`OIDF_REDIS_URL`) | managed Railway resource, no deploy dir |
+| `openbao` / `openbao-prod` | secrets vault | dormant, and **not rebuilt** in `dfb3922e`. Nothing referenced its transit key and its public key was trusted nowhere, so the rebuild simply left it out. |
+| `webhook-console` | — | never had a deployment; **not rebuilt** |
 
 Persistent state — the trust-controller volume (anchor key + subordinate DB) and the Redis instances — are
 pre-existing Railway resources, created once per environment and never rebuilt from git. PF itself is

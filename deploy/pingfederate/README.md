@@ -74,3 +74,28 @@ Because the modules are merged into `pf-runtime.war` at the **root** context, th
 `/oidf` prefix — the challenge endpoint is `/federation/attestation-challenge` and
 `/.well-known/ssf-configuration` is at root. Repoint any `/oidf/*` consumer (the demo UI's `PF_BASE`)
 accordingly.
+
+## The archive carries whatever the AS learned
+
+A PF configArchive is a snapshot of `server/default/data`, and OpenID Federation §12.1 automatic
+registration writes real OAuth clients into exactly that directory. So an archive exported from a
+running demo carries every client the demo auto-registered while it ran, keyed by the entity id the
+browser minted at the time — and those entity keys were thrown away when the tab closed.
+
+That is harmless until an entity id repeats. On the 2026-09-22 rebuild the demo UI came back at
+`pf-demo-ui-staging.up.railway.app` (the previous environment had a suffixed domain), which made the
+browser mint `…/e/payment-agent` — the exact client_id already baked into `data.zip` from an earlier
+session. Auto-registration then had nothing to do, and PF authenticated the assertion natively
+against the *baked* JWKS, whose private half no longer exists anywhere. The demo failed with
+`HTTP 400` and a `ClientPrivateKeyJwtValidator` "unable to find a suitable verification key", which
+reads like a broken trust chain and is nothing of the sort — the chain resolved fine.
+
+**Before shipping an archive, drop the auto-registered clients.** They are the ones whose `client_id`
+is an `https://…/e/<slug>` URL rather than a name you chose:
+
+```sh
+unzip -q data.zip -d dz && grep -rl 'client_id="https://.*/e/' dz/oauth-clients/
+```
+
+Delete those files, re-zip, redeploy. The deliberate demo clients (`https://rp.example.com`,
+`demo-attest-*`, `urn:agent:*`, `northwind-*`) all stay.
