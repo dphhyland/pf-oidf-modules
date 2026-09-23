@@ -53,5 +53,8 @@ resource "pingfederate_oauth_server_settings" "this" {
   # a token and every SSF stream this transmitter holds.
   exclusive_scopes = [
     { name = "ssf.manage", description = "Manage Shared Signals streams", dynamic = false },
+    # The provisioner scope: raises events and deprovisions subjects across every receiver's streams.
+    # Never granted to a receiver - the servlet refuses a configuration where the two are the same.
+    { name = "ssf.provision", description = "Raise Shared Signals events", dynamic = false },
   ]
 }

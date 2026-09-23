@@ -93,6 +93,36 @@ resource "pingfederate_oauth_client" "ssf_receiver" {
   ]
 }
 
+# ── Shared Signals: the operator that raises events ─────────────────────────────────────────────
+#
+# The CAEP Interop plan creates a stream, verifies it, and then waits for someone to "trigger these
+# events on the transmitter now" - three of them, one of which (device-compliance-change) PingFederate
+# never observes. suite/trigger-caep-events.py raises them through POST /ssf/events:emit with a token
+# from this client. It holds ssf.provision and nothing else, and authenticates with a secret rather
+# than a key so that a stdlib-only script can get its token: the secret reaches the script from
+# secrets.env, and the archive holds it obfuscated like the introspection client's.
+resource "pingfederate_oauth_client" "ssf_emitter" {
+  client_id = "conformance-ssf-emitter"
+  name      = "Conformance run - SSF event operator"
+
+  grant_types = ["CLIENT_CREDENTIALS"]
+
+  client_auth = {
+    type   = "SECRET"
+    secret = var.ssf_emitter_client_secret
+  }
+
+  restrict_scopes  = true
+  exclusive_scopes = ["ssf.provision"]
+
+  default_access_token_manager_ref = { id = pingfederate_oauth_access_token_manager.jwt.id }
+
+  depends_on = [
+    pingfederate_oauth_server_settings.this,
+    pingfederate_oauth_access_token_mapping.client,
+  ]
+}
+
 # ── Shared Signals: the servlet as a resource server ────────────────────────────────────────────
 #
 # The servlet cannot validate a receiver's token itself; it asks PF (RFC 7662), and PF wants to know

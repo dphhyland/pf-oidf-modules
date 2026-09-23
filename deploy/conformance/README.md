@@ -8,6 +8,7 @@ It is configured to pass two test plans and nothing else:
 |---|---|
 | `fapi2-security-profile-final-test-plan` | `private_key_jwt`, DPoP, `plain_fapi`, OpenID Connect |
 | `openid-ssf-transmitter-test-plan` | discovery metadata, dynamic auth (`private_key_jwt` client credentials), poll and push |
+| `openid-ssf-transmitter-caep-test-plan` | the same, under the CAEP Interop Profile - the plan the Foundation will certify SSF against |
 
 CIBA is not here yet. The suite's only CIBA plan is `fapi-ciba-id1-test-plan`, which profiles CIBA over
 FAPI **1** Advanced - certificate-bound tokens and all - so it is a second rig configuration rather than
@@ -64,6 +65,13 @@ Against the deployed rig, driven by a suite run locally at release-v5.3.1 (and, 
 results against a local copy of the image):
 
 - `openid-ssf-transmitter-test-plan`, poll delivery: 19 of 19 PASSED.
+- `openid-ssf-transmitter-caep-test-plan`, poll delivery: 13 of 13 PASSED (2026-09-23, local replica of the
+  image at pf-agentic-identity `conformance/caep-interop`). Its last module creates a stream, verifies it,
+  and then waits sixty seconds for an operator to "trigger these events on the transmitter now":
+  `suite/run-plan.py --on-log-marker ... --hook suite/trigger-caep-events.py` raises the three through
+  `POST /ssf/events:emit` as `conformance-ssf-emitter`, the one client holding `ssf.provision`. That
+  needs the servlet's `OIDF_SSF_DEFAULT_SUBJECTS=ALL` and `OIDF_SSF_PROVISIONER_SCOPE` (`vars.env`) and
+  the emitter client in the archive.
 - `fapi2-security-profile-final-test-plan`: of 56 modules, 49 PASSED, 4 REVIEW, 2 WARNING, 1 SKIPPED,
   none FAILED (2026-09-21). Expect, and do not be alarmed by:
   - **WARNING** on discovery - PingFederate publishes vendor metadata the suite does not know.
@@ -103,11 +111,13 @@ export PF_AUTHOR_ENV=~/.pf-conformance-author.env
 CTX="$(PF_AGENTIC_IDENTITY_HOME=../../../pf-agentic-identity ./compose-context.sh)"
 
 ./set-secrets.sh                   # a PERSON runs this: DevOps licence credentials + one generated secret
+./set-vars.sh                      # vars.env onto the service, no redeploy
 railway up "$CTX" --path-as-root --service pingfederate --no-gitignore --ci
 ```
 
-The non-secret service variables are `vars.env`. Change the issuer in one place and you have changed
-it in three: `pf_base_url`, `OIDF_SSF_ISSUER`, and the two federation variables.
+The non-secret service variables are `vars.env`, applied by `set-vars.sh`. Change the issuer in one
+place and you have changed it in three: `pf_base_url`, `OIDF_SSF_ISSUER`, and the two federation
+variables.
 
 ## Testing it
 
@@ -124,7 +134,18 @@ suite/run-plan.py https://localhost:9643 openid-ssf-transmitter-test-plan suite/
 
 suite/run-plan.py https://localhost:9643 fapi2-security-profile-final-test-plan suite/fapi2.json \
   --variant client_auth_type=private_key_jwt sender_constrain=dpop fapi_profile=plain_fapi openid=openid_connect
+
+# the CAEP Interop plan: its last module waits for the operator, and the hook is the operator
+suite/run-plan.py https://localhost:9643 openid-ssf-transmitter-caep-test-plan suite/ssf-transmitter.json \
+  --variant ssf_server_metadata=discovery ssf_delivery_mode=poll ssf_auth_mode=dynamic \
+            server_metadata=discovery client_registration=static_client client_auth_type=private_key_jwt \
+  --on-log-marker "Please trigger these events on the transmitter now" \
+  --hook "suite/trigger-caep-events.py"
 ```
+
+`trigger-caep-events.py` takes the emitter client's secret from `secrets.env` and the rig's origin from
+`terraform/variables.tf` (`--base` for a local replica). It exits non-zero if any of the three events
+reached no stream, which is what "the hook ran but the module still failed" would look like.
 
 A local suite can also test a local copy of the rig *as* the rig, without deploying anything: publish
 the image on the proxy's port (`-p 127.0.0.1:50715:9031`) and give the suite's `server` container

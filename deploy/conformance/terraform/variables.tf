@@ -67,6 +67,12 @@ variable "test_user_password" {
   sensitive   = true
 }
 
+variable "ssf_emitter_client_secret" {
+  description = "Secret of the client suite/trigger-caep-events.py raises CAEP events with (holds ssf.provision)"
+  type        = string
+  sensitive   = true
+}
+
 variable "ssf_introspection_client_secret" {
   description = "Secret of the client the SSF servlet introspects receiver tokens with (OIDF_SSF_INTROSPECTION_CLIENT_SECRET)"
   type        = string
