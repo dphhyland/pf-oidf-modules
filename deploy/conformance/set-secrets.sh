@@ -26,9 +26,10 @@ put() { # name, value
 }
 
 [[ -f "$PING_CONFIG" ]] || { echo "ERROR: $PING_CONFIG not found (set PING_DEVOPS_CONFIG)" >&2; exit 1; }
-[[ -f "$HERE/secrets.env" ]] || { echo "ERROR: no secrets.env - run ./gen-keys.sh first" >&2; exit 1; }
+RIG="${PF_AGENTIC_IDENTITY_HOME:?set PF_AGENTIC_IDENTITY_HOME to a pf-agentic-identity checkout}/conformance"
+[[ -f "$RIG/secrets.env" ]] || { echo "ERROR: no $RIG/secrets.env - run $RIG/gen-keys.sh first" >&2; exit 1; }
 
 put PING_IDENTITY_DEVOPS_USER "$(value_of PING_IDENTITY_DEVOPS_USER "$PING_CONFIG")"
 put PING_IDENTITY_DEVOPS_KEY "$(value_of PING_IDENTITY_DEVOPS_KEY "$PING_CONFIG")"
-put OIDF_SSF_INTROSPECTION_CLIENT_SECRET "$(value_of TF_VAR_ssf_introspection_client_secret "$HERE/secrets.env")"
+put OIDF_SSF_INTROSPECTION_CLIENT_SECRET "$(value_of TF_VAR_ssf_introspection_client_secret "$RIG/secrets.env")"
 echo "done - values were not displayed"
