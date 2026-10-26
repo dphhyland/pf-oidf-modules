@@ -26,6 +26,12 @@ The Railway deployment of the OIDF/attestation AS (project `2a226db6`, services
 `--no-gitignore` is not optional: `.context/` is git-ignored in full, and without the flag
 `railway up` uploads nothing and the Docker build fails on its first `COPY`.
 
+## The rig's agent types
+
+[`agents/`](agents) holds the observatory's two agent types (`agentd-docker`, `agentd-railway`) as config
+as code: their metadata, the script that mints each as a self-signed hosted entity, and the runbook that
+registers them, subordinates the observatory as their attester and names what goes in the archive.
+
 ## What you must stage here first (all git-ignored)
 
 | Path | What it is |

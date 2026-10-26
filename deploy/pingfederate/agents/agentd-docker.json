@@ -1,0 +1,15 @@
+{
+  "id": "agentd-docker",
+  "metadata": {
+    "oauth_client": {
+      "client_name": "agentd (docker mode): the Mac mini runner of the observatory's rig",
+      "grant_types": ["client_credentials"],
+      "response_types": [],
+      "scope": "runner",
+      "token_endpoint_auth_method": "attest_jwt_client_auth_dpop",
+      "client_attestation_pop_method": "dpop_combined",
+      "client_attestation_attester": "https://devops.mydigitalid.info"
+    }
+  },
+  "listable": true
+}
