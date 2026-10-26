@@ -38,7 +38,7 @@ Already in place from earlier work: the trust anchor (`OIDF_FEDERATION_TRUST_ANC
 
 | Secret | Where | What |
 |---|---|---|
-| `AGENT_TYPE_KEY_AGENTD_DOCKER`, `AGENT_TYPE_KEY_AGENTD_RAILWAY` | GitHub environment secrets of this repo (`staging`) | Each type's Federation Entity private JWK, as `mint-type.mjs --key-out` wrote it. Needed again only to re-sign the Entity Configuration (the authority moves, the metadata changes, the year is up). |
+| `AGENT_TYPE_KEY_AGENTD_DOCKER`, `AGENT_TYPE_KEY_AGENTD_RAILWAY` | Railway variables on the PF service that hosts the types (on pf-rig: project `d1b703dd`, service `pingfederate`; PF does not read them) | Each type's Federation Entity private JWK, as `mint-type.mjs --key-out` wrote it. Needed to re-sign the Entity Configuration, which PingFederate accepts for at most 7 days (604800 s), so weekly, and after every PF restart on an in-memory authority. |
 | the bridge keys file | a Railway secret on `pingfederate-runtime`, materialised at the path `OIDF_BRIDGE_SIGNING_KEYS` names | `{"<entity id of agentd-docker>": {"jwk": {...}}, "<entity id of agentd-railway>": {"jwk": {...}}}`, one fresh P-256 private JWK per type. The PingFederate image's entrypoint (pf-agentic-identity `build/pingfederate/pf-entrypoint.sh`) writes no file from a variable today, so this needs either a mounted secret file or a small entrypoint addition in the capability repo; decide at apply time. Rotate with `OIDF_BRIDGE_PREVIOUS_PUBLIC_JWK` during the overlap. |
 
 ## Runbook: register the types
@@ -60,8 +60,10 @@ for t in agentd-docker agentd-railway; do
 done
 ```
 
-The publication needs no token: the signature by a registered key is the authorisation. Then store each
-`*.key.json` as its GitHub secret and delete the file. Check the chain from the anchor:
+The publication needs no token: the signature by a registered key is the authorisation. PingFederate refuses an
+Entity Configuration that lives longer than 7 days ("lifetime exceeds 604800 seconds"), so `mint-type.mjs` signs
+for 7 at most: re-sign with `--key-in` weekly. Then store each `*.key.json` as its Railway variable and delete the
+file. Check the chain from the anchor:
 `curl "$ANCHOR/resolve?sub=$PF/federation/agents/agentd-docker&anchor=$ANCHOR"` should return a resolved
 statement whose `metadata.oauth_client.token_endpoint_auth_method` is `attest_jwt_client_auth_dpop`.
 
@@ -115,7 +117,12 @@ The token decodes to `typ` `at+jwt`, `iss` `$PF`, `aud` `https://devops.mydigita
 
 ## Status
 
-Written on 2026-10-27 while the staging PingFederate, trust controller and fedhost were **not deployed**:
+**Applied on 2026-10-27 to pf-rig** ([`../../pf-rig/`](../../pf-rig/README.md)): both types registered (201),
+published (204) and resolving through PF's own anchor (`/federation/resolve` 200). On pf-rig, `$ANCHOR` is the PF
+itself and the operator is `OIDF_AUTHORITY_ADMIN_TOKEN`. Not yet there: `authorization_details` in tokens (no RAR
+processor in the image), the bridge keys, SCIM and CAEP (see pf-rig's Known gaps).
+
+Earlier: written on 2026-10-27 while the staging PingFederate, trust controller and fedhost were **not deployed**:
 the Railway project the plan names (`2a226db6`) and the one `../../README.md` names (`dfb3922e`) are both
 gone, and every `*-staging.up.railway.app` host answers "Application not found". Nothing here has been
 applied; the first apply is a restore of the environment from this tree (plus the federation re-mint), then

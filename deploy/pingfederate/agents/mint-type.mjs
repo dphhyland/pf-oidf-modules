@@ -20,7 +20,7 @@
 //
 // Usage:
 //   node mint-type.mjs --authority https://pf.example.com --type agentd-docker \
-//        --key-out agentd-docker.key.json [--key-in agentd-docker.key.json] [--days 365] [--out .]
+//        --key-out agentd-docker.key.json [--key-in agentd-docker.key.json] [--days 7] [--out .]
 //
 // The entity id is <authority>/federation/agents/<type> (built by PingFederate from
 // OIDF_AUTHORITY_ENTITY_ID, never from the request's Host), so --authority must be that setting's
@@ -44,14 +44,14 @@ const authority = arg('authority')
 const type = arg('type')
 const keyOut = arg('key-out')
 const keyIn = arg('key-in')
-const days = Number(arg('days', '365'))
+const days = Number(arg('days', '7'))
 const out = arg('out', '.')
 if (!authority || !type || !keyOut) {
-  console.error('usage: mint-type.mjs --authority <url> --type <agentd-docker|agentd-railway> --key-out <file> [--key-in <file>] [--days 365] [--out <dir>]')
+  console.error('usage: mint-type.mjs --authority <url> --type <agentd-docker|agentd-railway> --key-out <file> [--key-in <file>] [--days 7] [--out <dir>]')
   process.exit(2)
 }
 if (!/^https:\/\/[^/]+$/.test(authority)) throw new Error(`--authority must be an https origin with no path: ${authority}`)
-if (!Number.isInteger(days) || days < 1 || days > 730) throw new Error('--days must be a whole number of days, 1 to 730')
+if (!Number.isInteger(days) || days < 1 || days > 7) throw new Error('--days must be a whole number of days, 1 to 7 (PingFederate refuses an Entity Configuration that lives longer than 604800 s)')
 
 // ── JOSE, on webcrypto (as ../../fedhost/remint.mjs does it) ────────────────────────────────────
 const enc = new TextEncoder()
