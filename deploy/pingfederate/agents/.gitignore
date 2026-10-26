@@ -1,0 +1,2 @@
+# Private keys the mint writes; the public registration and entity configuration may be committed.
+*.key.json
