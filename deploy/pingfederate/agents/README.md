@@ -93,8 +93,8 @@ These live in PingFederate's own configuration, which this project bakes into th
 2. **The access token manager** the auto-registered clients get: JWT, `typ` `at+jwt`, PS256, 10 minutes,
    with `cnf.jkt` (DPoP), audience `https://devops.mydigitalid.info/runner`, and an attribute contract with
    `agent_id` fulfilled by the OGNL expression
-   `@com.pingidentity.ps.oidf.servlet.clientregistration.ClientAttestationUtils@attestationClaim(#this,"agent_id")`
-   (confirm the class path against the deployed jar's `ClientAttestationUtils`). `authorization_details`
+   `@com.pingidentity.ps.oidf.servlet.clientregistration.utils.ClientAttestationUtils@attestationClaim(#this,"agent_id")`
+   `authorization_details`
    are issued by the RAR plugin and held to the attestation's ceiling.
 3. **The challenge endpoint** `POST /federation/attestation-challenge` on (its `DPoP-Nonce` is the
    combined-mode challenge; pf-agentic-identity `docs/configuration/attestation-challenge.md`).
