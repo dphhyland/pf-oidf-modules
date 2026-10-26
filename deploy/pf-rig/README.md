@@ -19,6 +19,8 @@ the static `OIDF_AUTHORITY_ADMIN_TOKEN` as the operator. It is not a production 
 | `overlay.py` | What the profile's Terraform does not do, applied to the authoring PF before export: OGNL expressions on, the JWT access token manager's audience `https://devops.mydigitalid.info/runner`, and `agent_id` in the token from the verified Client Attestation (`ClientAttestationUtils@attestationClaim(#this,"agent_id")`). |
 | `compose-context.sh` | The `railway up` context: pf-agentic-identity's `build/pingfederate/` (modules staged) plus `railway.json` and the **encrypted** archive. Refuses a plaintext one. |
 | `railway.json` | Dockerfile build, health check `/pf/heartbeat.ping` (PORT 9080), 600 s. |
+| `rig-entrypoint.sh` | The boot shim (the image's last stage, appended by `compose-context.sh`): writes `OIDF_BRIDGE_SIGNING_KEYS_JSON` to the file `OIDF_BRIDGE_SIGNING_KEYS` names (0600), then runs the image's own entrypoint. Without bridge keys `ATTESTATION_AUTH` is `FAILED_CONFIG`. |
+| `register-types.sh` | Registers, publishes and resolves both agent types from the keys on the service's variables. Run after every restart and weekly. |
 | `age-recipient.txt` | The public age recipient the archive is encrypted to. The identity is the `PF_ARCHIVE_AGE_KEY` variable only. |
 
 ## Variables on the service
@@ -26,7 +28,11 @@ the static `OIDF_AUTHORITY_ADMIN_TOKEN` as the operator. It is not a production 
 Non-secret: the profile's rendered env (`tools/profile.py author` writes it to `<out>/vars.env`) and `PORT=9080`.
 Secret, set through `railway variable set --stdin`, never in git or on disk afterwards; seal them in the dashboard:
 `PING_IDENTITY_DEVOPS_USER`, `PING_IDENTITY_DEVOPS_KEY` (the evaluation licence is fetched at boot and lasts about
-7 days, so restart the service weekly), `PF_ARCHIVE_AGE_KEY`, `OIDF_AUTHORITY_ADMIN_TOKEN`.
+7 days, so restart the service weekly), `PF_ARCHIVE_AGE_KEY`, `OIDF_AUTHORITY_ADMIN_TOKEN`, `AGENT_TYPE_KEY_AGENTD_DOCKER`,
+`AGENT_TYPE_KEY_AGENTD_RAILWAY` (PF doesn't read these; `register-types.sh` does), and `OIDF_BRIDGE_SIGNING_KEYS_JSON`:
+`{"<type entity id>": {"jwk": <P-256 private JWK>, "attesters": ["https://devops.mydigitalid.info"]}}` per type, with
+`OIDF_BRIDGE_SIGNER_BACKING=config` and `OIDF_BRIDGE_SIGNING_KEYS=/tmp/oidf-bridge/keys.json`. Each entry binds the type to
+the observatory as its only attester (`OIDF_ATTESTATION_REQUIRE_ATTESTER_BINDING` defaults to true).
 
 ## Rebuild from scratch
 

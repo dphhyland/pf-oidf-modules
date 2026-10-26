@@ -21,6 +21,17 @@ cp "$BUILD/Dockerfile" "$BUILD/assemble-pf-runtime-war.sh" "$BUILD/filters.xml" 
 cp -R "$BUILD/modules" "$CTX/modules"
 cp -R "$BUILD/assembler" "$CTX/assembler"
 cp -R "$BUILD/overlay/config-store" "$CTX/overlay/config-store"
-cp "$HERE/railway.json" "$CTX/"
+cp "$HERE/railway.json" "$HERE/rig-entrypoint.sh" "$CTX/"
+# The rig's last stage: the boot shim that writes the bridge keys file from a variable (rig-entrypoint.sh).
+# Appended, so a build with no --target builds it.
+cat >> "$CTX/Dockerfile" <<'STAGE'
+
+# --- rig: pf-oidf-modules deploy/pf-rig's boot shim over the deployment image ---
+FROM deployment AS rig
+USER root
+COPY --chown=0:0 --chmod=0755 rig-entrypoint.sh /opt/rig-entrypoint.sh
+USER 9031:0
+ENTRYPOINT ["/opt/rig-entrypoint.sh"]
+STAGE
 cp "$ARCHIVE" "$CTX/data.zip.age"
 echo "composed $CTX: $(head -1 "$CTX/modules/MANIFEST")"
