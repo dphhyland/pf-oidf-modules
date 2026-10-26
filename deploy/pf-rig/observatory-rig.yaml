@@ -1,0 +1,44 @@
+# The lean PingFederate for the observatory's agent rig (idp-observatory, private/plans/agent-identity.md):
+# one Railway service, project pf-rig. PF is the authorization server and its own trust anchor (no trust
+# controller, fedhost or OpenBao); it hosts the rig's agent types as self-signed entities
+# (../pingfederate/agents/) and authenticates their instances with Client Attestations the observatory
+# mints as a federation attester. Development posture: in-memory state, the plain listener behind Railway's
+# TLS edge, the static operator bearer. Authored with pf-agentic-identity's tools/profile.py; see README.md.
+profile: observatory-rig
+description: Lean PF for the observatory's agent rig - attestation auth, federation self-anchor, hosting
+pf:
+  base_url: https://pingfederate-production.up.railway.app
+  naming: { id: observatoryRig, display: Observatory rig }
+  client_storage: xml
+  extended_properties: true
+  scopes: [{ name: runner, description: "The observatory's /runner API (agent runners)" }]
+deployment:
+  mode: development
+# The runtime listener's keystore and var.secrets come from outside the repo at author time
+# (--material-dir, --secrets; README.md). Railway terminates TLS, so the certificate is self-signed.
+material:
+  runtime_tls: { p12: runtime.p12, key_id: pf-rig-tls }
+features:
+  attestation:
+    auth: true
+    issuer: false
+  federation:
+    auto_registration: true
+    hosting: true
+    self_anchor: true
+    organization_name: Observatory agent rig
+    # The hosting routes (POST /federation/agents, /federation/admin/entities/*) are operator routes. In this
+    # development posture the static OIDF_AUTHORITY_ADMIN_TOKEN (a sealed Railway variable) is the operator.
+    operator_api: {}
+  ssf: { transmitter: true, pf_objects: false }
+env:
+  PING_IDENTITY_ACCEPT_EULA: "YES"
+  # Railway terminates TLS and forwards plain HTTP to 9080; the entrypoint allows the listener only under development.
+  PF_RUN_PF_HTTP_PORT: "9080"
+  # The rig's agent-runner authorization_details type, pool by equality and repos as a set.
+  OIDF_RAR_EXTRA_TYPES: agent-runner
+  OIDF_RAR_MODELS: '{"types":{"agent-runner":{"fields":{"pool":"equal","repos":"set"}}}}'
+  # The hosting authority is PF itself: types live at <base>/federation/agents/<id>.
+  OIDF_AUTHORITY_ENTITY_ID: "{{PF_BASE_URL}}"
+  # The staging anchor publishes no metadata_policy (demo posture, as ../pingfederate/vars.staging.env).
+  OIDF_REQUIRE_METADATA_POLICY: "false"
